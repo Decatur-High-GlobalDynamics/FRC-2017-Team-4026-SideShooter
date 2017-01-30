@@ -7,3 +7,13 @@
 //
 
 #include "Hardware.hpp"
+
+Hardware::Hardware():
+	rightDriveMotor(0),
+	leftDriveMotor(1),
+	driveLeftStick(1),
+	driveRightStick(0)
+{
+}
+
+
