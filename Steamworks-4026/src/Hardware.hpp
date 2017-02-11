@@ -17,8 +17,8 @@
 class Hardware
 {
 public:
-	Victor rightDriveMotor;
-	Victor leftDriveMotor;
+	VictorSP rightDriveMotor;
+	VictorSP leftDriveMotor;
 	Joystick driveLeftStick;
 	Joystick driveRightStick;
 	Hardware();
