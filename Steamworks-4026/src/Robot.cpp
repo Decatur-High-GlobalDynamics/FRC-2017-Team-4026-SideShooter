@@ -31,7 +31,13 @@ public:
     Hardware *hardware;
     std::vector<StateMachine *> activeStateMachines;
 
+ 
 	void RobotInit() {
+        chooser.AddDefault(autoNameDefault, autoNameDefault);
+        chooser.AddObject(autoNameGear1, autoNameGear1);
+        chooser.AddObject(autoNameGear2, autoNameGear2);
+        chooser.AddObject(autoNameGear3, autoNameGear3);
+        frc::SmartDashboard::PutData("Auto Modes", &chooser);
 		hardware = new Hardware();
 	}
 
@@ -57,7 +63,7 @@ public:
 
 	void TeleopInit() {
 	    fprintf(stderr, "*** Configuring ***\n");
-	    StateMachine *stateMachine = new StateMachine();
+	    StateMachine *driveStateMachine = new StateMachine();
 
 	    /* This is where we create behavior instances */
 
@@ -65,18 +71,43 @@ public:
 	    TankBehavior *tankBehavior;
 	    tankBehavior = new TankBehavior();
 	    tankBehavior->name = "Tank Driving";
-	    StateNode *firstNode = stateMachine->appendBehavior(tankBehavior);
+	    StateNode *firstNode = driveStateMachine->appendBehavior(tankBehavior);
 
 	    // If the right trigger is pushed, it transitions to straigh driving
 	    DriveStraightBehavior *driveStraight = new DriveStraightBehavior();
 	    driveStraight->name = "Drive Straight";
-	    StateNode *lastNode =stateMachine->appendBehavior(driveStraight);
+	    StateNode *lastNode =driveStateMachine->appendBehavior(driveStraight);
 
 	    // Loop it! If the right trigger is released go back to tank driving
 	    lastNode->possibleNextBehaviors[BehaviorComplete] = firstNode;
 
 	    // Schedule this state machine
-	    activeStateMachines.push_back(stateMachine);
+	    activeStateMachines.push_back(driveStateMachine);
+
+        
+        // Create a second state machine for shooting
+        StateMachine *shootStateMachine = new StateMachine();
+
+        // Wait for a button to be pressed
+        WaitForButtonBehavior *wfb = new WaitForButtonBehavior(&(hw->manipulatorStick), 1);
+        wfb->name = "Wait for shoot button";
+        StateNode *firstShootNode = shootStateMachine->appendBehavior(wfb);
+        
+        // Wait for the shooters to get up to speed or button release
+        WaitForSpeedBehavior *wfs = new WaitForSpeedBehavior(-1800.0, 1800.0);
+        wfs->name = "Wait for shooters to get to speed";
+        shootStateMachine->appendBehavior(wfs);
+        
+        // Open the gates, maintain speed, check for button release
+        ShootFuelBehavior *shoot = new ShootFuelBehavior();
+        shoot->name = "Shoot fuel";
+        StateNode *lastShootNode = shootStateMachine->appendBehavior(shoot);
+
+        // Loop it! If button is released go back to waiting
+        lastShootNode->possibleNextBehaviors[BehaviorComplete] = firstShootNode;
+
+        // Schedule this state machine
+        activeStateMachines.push_back(shootStateMachine);
 
 	    // Note when we started this process
 	    clock_gettime(CLOCK_REALTIME, &processStart);	}
