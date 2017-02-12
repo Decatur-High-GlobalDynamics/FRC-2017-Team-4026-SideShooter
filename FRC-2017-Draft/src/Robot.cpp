@@ -2,11 +2,14 @@
 #include <memory>
 #include <string>
 
+#include <math.h>
 #include <WPILib.h>
 #include <SampleRobot.h>
 #include <SmartDashboard/SendableChooser.h>
 #include <SmartDashboard/SmartDashboard.h>
 #include <CANTalon.h>
+#include <CameraServer.h>
+#define PI 3.14159265
 #define USE_DRIVE_TIMER 1
 #define DRIVE_TICKSPERREV 1000
 #define SERVO_UP 0.2
@@ -33,6 +36,7 @@ class Robot: public frc::SampleRobot {
 	CANTalon ballIntakeRoller2 { 4 };
 	CANTalon gearCatcherScrew { 3 };
 	Servo shooterServo { 4 };
+	Servo agitatorServo { 5 };
 
 	frc::Joystick driveLeftStick { 0 };
 	frc::Joystick driveRightStick { 1 };
@@ -41,11 +45,15 @@ class Robot: public frc::SampleRobot {
 	AnalogGyro driveGyro { 0 };
 	AnalogInput wallDistanceSensorR { 2 };
 	AnalogInput wallDistanceSensorL { 1 };
+	DigitalInput gearCatcherLimitLeft { 1 };
+	DigitalInput gearCatcherLimitRight { 0 };
 
 	Timer autoDriveTimer;
+	Timer agitatorTimer;
 
 	bool driveReverse;
 	bool isGyroResetTelop;
+	bool agitatorUp;
 	int autoState;
 
 	frc::SendableChooser<std::string> chooser;
@@ -60,7 +68,7 @@ public:
 		driveReverse = false;
 		isGyroResetTelop = false;
 		autoState = 0;
-
+		agitatorUp = false;
 		//myRobot.SetExpiration(0.1);
 	}
 
@@ -99,9 +107,14 @@ public:
 		//shooterWheelBack.Set(0.0);
 
 		shooterServo.Set(1.0);
+		agitatorServo.Set(0.9);
 		driveReverse = true;
 		driveGyro.Reset();
 
+		//autoDriveTimer = new Timer();
+		//agitatorTimer = new Timer();
+
+		CameraServer::GetInstance()->StartAutomaticCapture();
 	}
 
 	/*
@@ -198,22 +211,51 @@ public:
 	{
 		if(manipulatorStick.GetY() > 0.1 || manipulatorStick.GetY() < -0.1)
 		{
+			shooterWheelFront.SetP(0.047);
+			shooterWheelFront.SetI(0.0);
+			shooterWheelFront.SetD(1.2);
+
+			shooterWheelBack.SetP(0.047);
+			shooterWheelBack.SetI(0.0);
+			shooterWheelBack.SetD(1.2);
+
 			shooterServo.Set(SERVO_UP);
-			shooterWheelFront.Set(-1.0*manipulatorStick.GetY());
-			shooterWheelBack.Set(manipulatorStick.GetY());
+			shooterWheelFront.Set(-1.0*manipulatorStick.GetY() * 3400);
+			shooterWheelBack.Set(manipulatorStick.GetY()* 3600);
 		}
 		else if(manipulatorStick.GetRawButton(1))
 		{
 			//CHANGE VALUES BELOW TO REFLECT ACTUAL SHOOTING SPEED
+			shooterWheelFront.SetP(0.047);
+			shooterWheelFront.SetI(0.0);
+			shooterWheelFront.SetD(1.2);
+
+			shooterWheelBack.SetP(0.047);
+			shooterWheelBack.SetI(0.0);
+			shooterWheelBack.SetD(1.2);
+
 			shooterServo.Set(SERVO_UP);
+			if(!agitatorUp && (agitatorTimer.Get() > 4.0))
+			{
+				agitatorServo.Set(0.2);
+				agitatorTimer.Reset();
+				agitatorTimer.Start();
+				agitatorUp = true;
+			}
+			else if(agitatorTimer.Get() > 2.0)
+			{
+				agitatorServo.Set(0.9);
+				agitatorUp = false;
+			}
+
 			//shooterWheelFront.Set(-.6);
 			//shooterWheelBack.Set(0.6);
 			//shooterWheelBack.PIDWrite(1);
 			//shooterWheelFront.PIDWrite(1);
-			shooterWheelFront.Set(-1800.0);
-			shooterWheelBack.Set(1800.0);
+			shooterWheelFront.Set(-3400.0);
+			shooterWheelBack.Set(3600.0);
 		}
-		else if(manipulatorStick.GetRawButton(2))
+		/*else if(manipulatorStick.GetRawButton(2))
 		{
 			//CHANGE VALUES BELOW TO REFLECT ACTUAL SHOOTING SPEED
 			shooterServo.Set(SERVO_UP);
@@ -233,13 +275,25 @@ public:
 			shooterServo.Set(SERVO_UP);
 			shooterWheelFront.Set(-0.75);
 			shooterWheelBack.Set(0.75);
-		}
+		}*/
 		else
 		{
 			//Stop shooting
 			shooterServo.Set(1.0);
+
+			shooterWheelFront.SetP(0.0);
+			shooterWheelFront.SetI(0.0);
+			shooterWheelFront.SetD(0.0);
+			shooterWheelBack.SetP(0.0);
+			shooterWheelBack.SetI(0.0);
+			shooterWheelBack.SetD(0.0);
+
 			shooterWheelFront.Set(0.0);
 			shooterWheelBack.Set(0.0);
+
+			agitatorUp = false;
+			agitatorTimer.Reset();
+			agitatorTimer.Start();
 		}
 	}
 
@@ -250,13 +304,13 @@ public:
 	{
 		//Should set a dead-zone for this despite the speed controllers having one built in
 		//gearCatcherScrew.Set(manipulatorStick.GetX());
-		if(manipulatorStick.GetRawButton(5))
+		if(manipulatorStick.GetRawButton(5) && gearCatcherLimitLeft.Get())
 		{
-			gearCatcherScrew.Set(0.6);
+			gearCatcherScrew.Set(0.7);
 		}
 		else if(manipulatorStick.GetRawButton(6))
 		{
-			gearCatcherScrew.Set(-0.6);
+			gearCatcherScrew.Set(-0.7);
 		}
 		else
 		{
@@ -449,6 +503,9 @@ public:
 		SmartDashboard::PutNumber("Wall Distance Right: ", CalculateWallDistanceR(false));
 		SmartDashboard::PutNumber("Wall Distance Left: ", CalculateWallDistanceL(false));
 		SmartDashboard::PutNumber("Gyro Reading: ", driveGyro.GetAngle());
+
+		SmartDashboard::PutNumber("GearLimitLeft: ", gearCatcherLimitLeft.Get());
+		SmartDashboard::PutNumber("GearLimitRight: ", gearCatcherLimitRight.Get());
 	}
 
 	/*
@@ -462,6 +519,26 @@ public:
 				stopRobotDrive();
 				break;
 		}
+	}
+
+	/*
+	 * Align robot parallel with wall
+	 */
+	bool performRobotFaceAlignment()
+	{
+		float angleToTurnDegrees = 0.0;
+		try
+		{
+			angleToTurnDegrees = (atan((CalculateWallDistanceR(false) - CalculateWallDistanceL(false)) / 22.625) * 180.0) / PI;
+		}
+		catch(...)
+		{
+			angleToTurnDegrees = 0.0;
+		}
+		SmartDashboard::PutNumber("Angle Off Parallel: ", angleToTurnDegrees);
+
+		return false;
+		//return turnGyro(angleToTurnDegrees);
 	}
 
 	/*
@@ -515,6 +592,8 @@ public:
 			controlGearCatcher();
 			controlBallIntake();
 			updateDashboard();
+
+			performRobotFaceAlignment(); //temp..to be used during auto
 			// wait for a motor update time
 			frc::Wait(0.005);
 		}

@@ -13,9 +13,12 @@
 #include "Hardware.hpp"
 
 #include <IterativeRobot.h>
+//#include <SampleRobot.h>
 #include <LiveWindow/LiveWindow.h>
 #include <SmartDashboard/SendableChooser.h>
 #include <SmartDashboard/SmartDashboard.h>
+//#include <WPILib.h>
+//#include <CANTalon.h>
 
 struct timespec processStart;
 unsigned long millisSinceStart() {
@@ -27,6 +30,7 @@ unsigned long millisSinceStart() {
 }
 
 class Robot: public frc::IterativeRobot {
+//class Robot: public frc::SampleRobot {
 
 public:
 
