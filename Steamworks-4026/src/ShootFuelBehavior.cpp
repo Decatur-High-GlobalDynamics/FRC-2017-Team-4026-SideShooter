@@ -36,7 +36,7 @@ BehaviorExit ShootFuelBehavior::continueOperating(Hardware *hw, unsigned long mi
 }
 
 
-void ShootFuelBehavior::cleanUp(Hardware *io, unsigned long millis)
+void ShootFuelBehavior::cleanUp(Hardware *hw, unsigned long millis)
 {
     Behavior::cleanUp(hw, millis);
     

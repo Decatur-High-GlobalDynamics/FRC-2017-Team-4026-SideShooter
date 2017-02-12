@@ -9,8 +9,8 @@ class ShootFuelBehavior : public Behavior
 {
 
 public:
-    float targetSpeedFront, targetSpeedBack;
-    ShootFuelBehavior();
+    float targetFrontSpeed, targetBackSpeed;
+    ShootFuelBehavior(float desiredSpeedFront, float desiredSpeedBack);
     void start(Hardware *io, unsigned long millis);
     BehaviorExit continueOperating(Hardware *io, unsigned long millis);
     void cleanUp(Hardware *io, unsigned long millis);

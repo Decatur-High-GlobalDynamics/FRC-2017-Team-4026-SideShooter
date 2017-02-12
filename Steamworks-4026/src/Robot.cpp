@@ -6,6 +6,9 @@
 #include <time.h>
 #include "StateMachine.hpp"
 #include "DriveStraightBehavior.hpp"
+#include "WaitForButtonBehavior.hpp"
+#include "WaitForSpeedBehavior.hpp"
+#include "ShootFuelBehavior.hpp"
 #include "TankBehavior.hpp"
 #include "Hardware.hpp"
 
@@ -30,7 +33,11 @@ public:
     // This has all the sensors and actuators
     Hardware *hardware;
     std::vector<StateMachine *> activeStateMachines;
-
+	frc::SendableChooser<std::string> chooser;
+	const std::string autoNameDefault = "Default";
+	const std::string autoNameGear1= "Gear Location 1";
+	const std::string autoNameGear2 = "Gear Location 2";
+	const std::string autoNameGear3 = "Gear Location 3";
  
 	void RobotInit() {
         chooser.AddDefault(autoNameDefault, autoNameDefault);
@@ -89,17 +96,17 @@ public:
         StateMachine *shootStateMachine = new StateMachine();
 
         // Wait for a button to be pressed
-        WaitForButtonBehavior *wfb = new WaitForButtonBehavior(&(hw->manipulatorStick), 1);
+        WaitForButtonBehavior *wfb = new WaitForButtonBehavior(&(hardware->manipulatorStick), 1);
         wfb->name = "Wait for shoot button";
         StateNode *firstShootNode = shootStateMachine->appendBehavior(wfb);
         
         // Wait for the shooters to get up to speed or button release
-        WaitForSpeedBehavior *wfs = new WaitForSpeedBehavior(-1800.0, 1800.0);
+        WaitForSpeedBehavior *wfs = new WaitForSpeedBehavior(-3200.0, 3400.0);
         wfs->name = "Wait for shooters to get to speed";
         shootStateMachine->appendBehavior(wfs);
         
         // Open the gates, maintain speed, check for button release
-        ShootFuelBehavior *shoot = new ShootFuelBehavior();
+        ShootFuelBehavior *shoot = new ShootFuelBehavior(-3200.0, 3400.0);
         shoot->name = "Shoot fuel";
         StateNode *lastShootNode = shootStateMachine->appendBehavior(shoot);
 

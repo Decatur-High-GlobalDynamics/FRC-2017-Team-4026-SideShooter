@@ -1,14 +1,10 @@
 #include "DriveStraightBehavior.hpp"
-#inculde "Hardware.hpp"
+#include "Hardware.hpp"
 
-DriveStraightBehavior::DriveStraightBehavior()
-{
-
-}
 
 void DriveStraightBehavior::start(Hardware *hw, unsigned long millis)
 {
-    Behavior::start(io, millis);
+    Behavior::start(hw, millis);
     targetAngle = hw->driveGyro.GetAngle();
 }
 
@@ -28,13 +24,13 @@ BehaviorExit DriveStraightBehavior::continueOperating(Hardware *hw, unsigned lon
     }
 
     // Get the left joystick value
-    float leftJoystickRaw = hw->leftDriveStick.GetY();
-    float currentAngle = driveGyro.GetAngle();
+    float leftJoystickRaw = hw->driveLeftStick.GetY();
+    float currentAngle = hw->driveGyro.GetAngle();
     
     // Could smooth or reverse
     float desiredVelocity = leftJoystickRaw;
 
-    float error = targetAngle - driveGyro.GetAngle();
+    float error = targetAngle - currentAngle;
     
     // The abs(error) should aways be less than or equal to 180 degrees
     while (error > 180.0) {
@@ -57,8 +53,8 @@ BehaviorExit DriveStraightBehavior::continueOperating(Hardware *hw, unsigned lon
         rightDriveVel = desiredVelocity - correctionFactor;
     }
     
-    leftDriveMotor.Set(leftDriveVel);
-    rightDriveMotor.Set(rightDriveVel);
+    hw->leftDriveMotor.Set(leftDriveVel);
+    hw->rightDriveMotor.Set(rightDriveVel);
     
   	return BehaviorIncomplete;
 }

@@ -10,6 +10,9 @@
 #define Hardware_hpp
 #include <WPILib.h>
 #include <CANTalon.h>
+#include <SampleRobot.h>
+#include <SmartDashboard/SendableChooser.h>
+#include <SmartDashboard/SmartDashboard.h>
 
 // Hardware has the sensors and actuators
 

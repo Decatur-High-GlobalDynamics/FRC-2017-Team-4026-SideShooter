@@ -11,8 +11,7 @@
 class DriveStraightBehavior : public Behavior
 {
 public:
-	float initialGyroDirection; // Where was the bot pointed when the behavior started?
-	DriveStraightBehavior();  // The constructor
+	float targetAngle; // Where was the bot pointed when the behavior started?
     void start(Hardware *io, unsigned long millis); // Called automatically when the behavior starts
     BehaviorExit continueOperating(Hardware *io, unsigned long millis); // Called repeatedly
 };

@@ -17,7 +17,7 @@ BehaviorExit WaitForButtonBehavior::continueOperating(Hardware *hw, unsigned lon
     }
 
     // Is the button pressed?
-    if (js->GetRawButton(bIndex)) {
+    if (joystick->GetRawButton(buttonIndex)) {
 
     	// I'm done!
     	return BehaviorComplete;
