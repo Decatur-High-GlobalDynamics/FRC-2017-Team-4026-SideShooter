@@ -10,7 +10,9 @@
 #include "WaitForSpeedBehavior.hpp"
 #include "ShootFuelBehavior.hpp"
 #include "TankBehavior.hpp"
+#include "ScrollBehavior.hpp"
 #include "Hardware.hpp"
+
 
 #include <IterativeRobot.h>
 //#include <SampleRobot.h>
@@ -123,6 +125,18 @@ public:
 
         // Schedule this state machine
         activeStateMachines.push_back(shootStateMachine);
+
+        // Create a second state machine for shooting
+        StateMachine *gearStateMachine = new StateMachine();
+
+        // Let driver move gear catcher back and forth
+        ScrollBehavior *sb = new ScrollBehavior();
+        sb->name = "Scroll gear catcher";
+        StateNode *firstGearNode = gearStateMachine->appendBehavior(sb);
+
+        // A loop of one
+        firstGearNode->possibleNextBehaviors[BehaviorComplete] = firstGearNode;
+        activeStateMachines.push_back(gearStateMachine);
 
 	    // Note when we started this process
 	    clock_gettime(CLOCK_REALTIME, &processStart);
