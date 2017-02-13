@@ -20,12 +20,12 @@ unsigned long Behavior::millisSinceStart(unsigned long later)
 }
 
 // 'cancel' sets 'isCanceled' to true.
-void Behavior::cancel(Hardware *io)
+void Behavior::cancel(Hardware *hw)
 {
     isCanceled = true;
 }
 
-void Behavior::start(Hardware *io, unsigned long millis)
+void Behavior::start(Hardware *hw, unsigned long millis)
 {
     startTime = millis;
     isCanceled = false;
@@ -34,7 +34,7 @@ void Behavior::start(Hardware *io, unsigned long millis)
 // 'continueOperating' does the work of the behavior.
 // It returns 'BehaviorIncomplete' if it wants to be called again.
 // Always check to see if isCanceled.
-BehaviorExit Behavior::continueOperating(Hardware *io, unsigned long millis)
+BehaviorExit Behavior::continueOperating(Hardware *hw, unsigned long millis)
 {
     if (isCanceled) {
         return BehaviorCanceled;
@@ -44,7 +44,7 @@ BehaviorExit Behavior::continueOperating(Hardware *io, unsigned long millis)
 }
 
 // 'cleanUp'
-void Behavior::cleanUp(Hardware *io, unsigned long millis)
+void Behavior::cleanUp(Hardware *hw, unsigned long millis)
 {
     
 }

@@ -1,4 +1,5 @@
 #include "WaitForSpeedBehavior.hpp"
+#include <CANTalon.h>
 
 #define MARGIN (10.0)
 

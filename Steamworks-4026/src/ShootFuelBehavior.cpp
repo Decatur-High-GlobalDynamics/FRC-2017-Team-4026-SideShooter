@@ -1,13 +1,15 @@
 #include "ShootFuelBehavior.hpp"
 
+#include "Hardware.hpp"
+#include <CANTalon.h>
+#define SERVO_UP (0.2)
+#define SERVO_DOWN (1.0)
 
-// The constructor
-ShootFuelBehavior::ShootFuelBehavior(float desiredSpeedFront, float desiredSpeedBack)
+void ShootFuelBehavior::start(Hardware *hw, unsigned long millis)
 {
-    targetFrontSpeed = desiredSpeedFront;
-    targetBackSpeed = desiredSpeedBack;
+	Behavior::start(hw,millis);
+    hw->shooterServo.Set(SERVO_UP);
 }
-
 
 
 // Called again and again
@@ -28,8 +30,8 @@ BehaviorExit ShootFuelBehavior::continueOperating(Hardware *hw, unsigned long mi
     
     // We could tweak these as we see the balls
     // missing the target
-    hw->shooterWheelFront.Set(targetFrontSpeed);
-    hw->shooterWheelBack.Set(targetBackSpeed);
+    //hw->shooterWheelFront.Set(targetFrontSpeed);
+    //hw->shooterWheelBack.Set(targetBackSpeed);
     
 	// I'm not done!
 	return BehaviorIncomplete;
@@ -41,7 +43,7 @@ void ShootFuelBehavior::cleanUp(Hardware *hw, unsigned long millis)
     Behavior::cleanUp(hw, millis);
     
     // Close the door
-    hw->shooterServo.Set(1.0);
+    hw->shooterServo.Set(SERVO_DOWN);
     
     // Let the motors slow to a stop
     hw->shooterWheelFront.SetF(0.0);
