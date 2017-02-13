@@ -12,7 +12,7 @@
 #define PI 3.14159265
 #define USE_DRIVE_TIMER 1
 #define DRIVE_TICKSPERREV 1000
-#define SERVO_UP 0.2
+#define SERVO_UP 0.6
 
 /**
  * This is a demo program showing the use of the RobotDrive class.
@@ -50,10 +50,12 @@ class Robot: public frc::SampleRobot {
 
 	Timer autoDriveTimer;
 	Timer agitatorTimer;
+	Timer genericTimer;
 
 	bool driveReverse;
 	bool isGyroResetTelop;
 	bool agitatorUp;
+	bool genericTimerStarted;
 	int autoState;
 
 	frc::SendableChooser<std::string> chooser;
@@ -69,6 +71,7 @@ public:
 		isGyroResetTelop = false;
 		autoState = 0;
 		agitatorUp = false;
+		genericTimerStarted = false;
 		//myRobot.SetExpiration(0.1);
 	}
 
@@ -115,6 +118,27 @@ public:
 		//agitatorTimer = new Timer();
 
 		CameraServer::GetInstance()->StartAutomaticCapture();
+	}
+
+	/*
+	 * Returns true when time in seconds has expired
+	 */
+	bool WaitAsyncUntil(double timeInSec)
+	{
+		if(!genericTimerStarted)
+		{
+			genericTimer.Reset();
+			genericTimer.Start();
+			genericTimerStarted = true;
+		}
+
+		if(genericTimer.Get() >= timeInSec)
+		{
+			genericTimerStarted = false;
+			return true;
+		}
+
+		return false;
 	}
 
 	/*
@@ -226,32 +250,30 @@ public:
 		else if(manipulatorStick.GetRawButton(1))
 		{
 			//CHANGE VALUES BELOW TO REFLECT ACTUAL SHOOTING SPEED
-			shooterWheelFront.SetP(0.047);
+			shooterWheelFront.SetP(0.046);
 			shooterWheelFront.SetI(0.0);
 			shooterWheelFront.SetD(1.2);
 
-			shooterWheelBack.SetP(0.047);
+			shooterWheelBack.SetP(0.046);
 			shooterWheelBack.SetI(0.0);
 			shooterWheelBack.SetD(1.2);
 
 			shooterServo.Set(SERVO_UP);
-			if(!agitatorUp && (agitatorTimer.Get() > 4.0))
+			if(!agitatorUp && (agitatorTimer.Get() > 0.5))
 			{
 				agitatorServo.Set(0.2);
 				agitatorTimer.Reset();
 				agitatorTimer.Start();
 				agitatorUp = true;
 			}
-			else if(agitatorTimer.Get() > 2.0)
+			else if(agitatorTimer.Get() > 0.5)
 			{
 				agitatorServo.Set(0.9);
+				agitatorTimer.Reset();
+				agitatorTimer.Start();
 				agitatorUp = false;
 			}
 
-			//shooterWheelFront.Set(-.6);
-			//shooterWheelBack.Set(0.6);
-			//shooterWheelBack.PIDWrite(1);
-			//shooterWheelFront.PIDWrite(1);
 			shooterWheelFront.Set(-3400.0);
 			shooterWheelBack.Set(3600.0);
 		}
@@ -279,6 +301,7 @@ public:
 		else
 		{
 			//Stop shooting
+			agitatorServo.Set(1.0); //Make sure agitator is down before closing door
 			shooterServo.Set(1.0);
 
 			shooterWheelFront.SetP(0.0);
