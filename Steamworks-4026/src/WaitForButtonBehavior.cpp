@@ -18,7 +18,7 @@ BehaviorExit WaitForButtonBehavior::continueOperating(Hardware *hw, unsigned lon
 
     // Is the button pressed?
     if (joystick->GetRawButton(buttonIndex)) {
-
+    	fprintf(stderr, "Button pressed!\n");
     	// I'm done!
     	return BehaviorComplete;
     }

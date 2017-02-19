@@ -6,6 +6,7 @@ void DriveStraightBehavior::start(Hardware *hw, unsigned long millis)
 {
     Behavior::start(hw, millis);
     targetAngle = hw->driveGyro.GetAngle();
+    fprintf(stderr, "target angle = %.2f\n", targetAngle);
 }
 
 BehaviorExit DriveStraightBehavior::continueOperating(Hardware *hw, unsigned long millis)
@@ -24,11 +25,11 @@ BehaviorExit DriveStraightBehavior::continueOperating(Hardware *hw, unsigned lon
     }
 
     // Get the left joystick value
-    float leftJoystickRaw = hw->driveLeftStick.GetY();
+    float joystickRaw = hw->driveRightStick.GetY();
     float currentAngle = hw->driveGyro.GetAngle();
     
     // Could smooth or reverse
-    float desiredVelocity = leftJoystickRaw;
+    float desiredVelocity = joystickRaw;
 
     float error = targetAngle - currentAngle;
     
@@ -40,19 +41,17 @@ BehaviorExit DriveStraightBehavior::continueOperating(Hardware *hw, unsigned lon
         error = error + 360.0;
     }
     
+
     float correctionFactor = (error/75.0);
     
     float leftDriveVel, rightDriveVel;
     
+    // If the error is positive, slow down the left drive
+
     // FIXME: Make sure the sign is right on all these
-    if (hw->driveReverse) {
-        leftDriveVel = desiredVelocity + correctionFactor;
-        rightDriveVel = -desiredVelocity + correctionFactor;
-    } else {
-        leftDriveVel = -desiredVelocity - correctionFactor;
-        rightDriveVel = desiredVelocity - correctionFactor;
-    }
-    
+    leftDriveVel = -1 * (desiredVelocity - correctionFactor);
+    rightDriveVel = desiredVelocity + correctionFactor;
+
     hw->leftDriveMotor.Set(leftDriveVel);
     hw->rightDriveMotor.Set(rightDriveVel);
     

@@ -41,8 +41,8 @@ public:
 
 
     // Driver inputs
-    frc::Joystick driveLeftStick { 0 };
-    frc::Joystick driveRightStick { 1 };
+    frc::Joystick driveLeftStick { 1 };
+    frc::Joystick driveRightStick { 0 };
     frc::Joystick manipulatorStick { 2 };
     
     // Sensors

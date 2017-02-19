@@ -28,8 +28,8 @@ BehaviorExit TankBehavior::continueOperating(Hardware *hw, unsigned long millis)
 	float left = hw->driveLeftStick.GetY();
 
 	// Set power to motors
-	hw->leftDriveMotor.Set(left);
-	hw->rightDriveMotor.Set(-right);
+	hw->leftDriveMotor.Set(-left);
+	hw->rightDriveMotor.Set(right);
 
 	// I'm not done!
 	return BehaviorIncomplete;
