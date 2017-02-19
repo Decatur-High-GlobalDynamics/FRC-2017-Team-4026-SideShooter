@@ -10,7 +10,9 @@
 #include "WaitForSpeedBehavior.hpp"
 #include "ShootFuelBehavior.hpp"
 #include "TankBehavior.hpp"
+#include "ScrollBehavior.hpp"
 #include "Hardware.hpp"
+
 
 #include <IterativeRobot.h>
 //#include <SampleRobot.h>
@@ -50,6 +52,8 @@ public:
         chooser.AddObject(autoNameGear3, autoNameGear3);
         frc::SmartDashboard::PutData("Auto Modes", &chooser);
 		hardware = new Hardware();
+
+		CameraServer::GetInstance()->StartAutomaticCapture();
 	}
 
 	/*
@@ -73,8 +77,8 @@ public:
 	}
 
 	void TeleopInit() {
-	    fprintf(stderr, "*** Configuring ***\n");
-	    StateMachine *driveStateMachine = new StateMachine();
+
+		StateMachine *driveStateMachine = new StateMachine();
 
 	    /* This is where we create behavior instances */
 
@@ -110,7 +114,9 @@ public:
         shootStateMachine->appendBehavior(wfs);
         
         // Open the gates, maintain speed, check for button release
-        ShootFuelBehavior *shoot = new ShootFuelBehavior(-3200.0, 3400.0);
+        ShootFuelBehavior *shoot = new ShootFuelBehavior();
+        shoot->targetFrontSpeed = -3200.0;
+        shoot->targetBackSpeed = 3400.0;
         shoot->name = "Shoot fuel";
         StateNode *lastShootNode = shootStateMachine->appendBehavior(shoot);
 
@@ -120,8 +126,21 @@ public:
         // Schedule this state machine
         activeStateMachines.push_back(shootStateMachine);
 
+        // Create a second state machine for shooting
+        StateMachine *gearStateMachine = new StateMachine();
+
+        // Let driver move gear catcher back and forth
+        ScrollBehavior *sb = new ScrollBehavior();
+        sb->name = "Scroll gear catcher";
+        StateNode *firstGearNode = gearStateMachine->appendBehavior(sb);
+
+        // A loop of one
+        firstGearNode->possibleNextBehaviors[BehaviorComplete] = firstGearNode;
+        activeStateMachines.push_back(gearStateMachine);
+
 	    // Note when we started this process
-	    clock_gettime(CLOCK_REALTIME, &processStart);	}
+	    clock_gettime(CLOCK_REALTIME, &processStart);
+	};
 
 	void TeleopPeriodic() {
 

@@ -7,10 +7,16 @@
 //
 
 #include "Hardware.hpp"
+#define DRIVE_TICKSPERREV 1000
+
 
 float smoothJoystick(float raw)
 {
     return powf(raw, 3);
+}
+float convertDriveTicksToInches(int encTicks)
+{
+	return (float)((float)encTicks / DRIVE_TICKSPERREV) * 3.14 * 4.0;
 }
 
 Hardware::Hardware()
@@ -44,6 +50,7 @@ Hardware::Hardware()
     
     shooterServo.Set(1.0);
     driveReverse = true;
+    isGyroResetTelop = false;
     driveGyro.Reset();
 
 

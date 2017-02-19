@@ -17,6 +17,8 @@
 // Hardware has the sensors and actuators
 
 float smoothJoystick(float raw);
+float convertDriveTicksToInches(int encTicks);
+
 
 class Hardware
 {
@@ -29,8 +31,15 @@ public:
     CANTalon ballIntakeRoller1 { 2 };
     CANTalon ballIntakeRoller2 { 4 };
     CANTalon gearCatcherScrew { 3 };
+	Servo agitatorServo { 5 };
     Servo shooterServo { 4 };
     
+	AnalogInput wallDistanceSensorR { 2 };
+	AnalogInput wallDistanceSensorL { 1 };
+	DigitalInput gearCatcherLimitLeft { 1 };
+	DigitalInput gearCatcherLimitRight { 0 };
+
+
     // Driver inputs
     frc::Joystick driveLeftStick { 0 };
     frc::Joystick driveRightStick { 1 };
@@ -38,8 +47,6 @@ public:
     
     // Sensors
     AnalogGyro driveGyro { 0 };
-    AnalogInput wallDistanceSensorR { 2 };
-    AnalogInput wallDistanceSensorL { 1 };
     
     // System state
     bool driveReverse;
