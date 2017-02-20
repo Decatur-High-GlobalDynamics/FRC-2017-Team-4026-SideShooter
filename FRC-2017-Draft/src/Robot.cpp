@@ -68,6 +68,7 @@ class Robot: public frc::SampleRobot {
 	const std::string autoNameGear1RED= "RED: Gear Location 1";
 	const std::string autoNameGear2RED = "RED: Gear Location 2";
 	const std::string autoNameGear3RED = "RED: Gear Location 3";
+	const std::string autoNameGear1BLUE= "BLUE: Gear Location 1";
 	const std::string autoNameTwoHopperRED = "RED: Two Hopper";
 
 public:
@@ -88,6 +89,7 @@ public:
 		chooser.AddObject(autoNameGear1RED, autoNameGear1RED);
 		chooser.AddObject(autoNameGear2RED, autoNameGear2RED);
 		chooser.AddObject(autoNameGear3RED, autoNameGear3RED);
+		chooser.AddObject(autoNameGear1BLUE, autoNameGear1BLUE);
 		chooser.AddObject(autoNameTwoHopperRED, autoNameTwoHopperRED);
 		frc::SmartDashboard::PutData("Auto Modes", &chooser);
 
@@ -371,17 +373,12 @@ public:
 	 */
 	void controlBallIntake()
 	{
-		if(manipulatorStick.GetRawButton(7))
-		{
-			ballIntakeRoller1.Set(1.0);
-			ballIntakeRoller2.Set(1.0);
-		}
-		else if(manipulatorStick.GetRawButton(8))
+		if(manipulatorStick.GetRawButton(8))
 		{
 			ballIntakeRoller1.Set(-1.0);
 			ballIntakeRoller2.Set(-1.0);
 		}
-		else if(manipulatorStick.GetRawButton(4))
+		else if(manipulatorStick.GetRawButton(7))
 		{
 			ballIntakeRoller1.Set(-0.3);
 			ballIntakeRoller2.Set(-0.3);
@@ -440,9 +437,10 @@ public:
 	/*
 	 * Used during autonomous to turn the robot to a specified angle.
 	 */
-	bool turnGyro(float rAngle)
+	bool turnGyro(float rAngle, float maxTurnSpeed = 0.5)
 	{
-		float error = 0;
+		float error = 0.0;
+		float speedToSet = 0.0;
 		//Positive gyro angle means turning left
 		if(rAngle < driveGyro.GetAngle())
 		{
@@ -450,8 +448,11 @@ public:
 			if(driveGyro.GetAngle() <= fabs(rAngle) && fabs(error) > 2.0)
 			{
 				//turn left
-				leftDriveMotor.Set((error/140) + 0.2); //0.8
-				rightDriveMotor.Set((error/140) + 0.2); //0.8
+				speedToSet = (error/140) + 0.1;
+				if(fabs(speedToSet) > maxTurnSpeed)
+					speedToSet = maxTurnSpeed * (speedToSet < 0.0 ? -1.0 : 1.0);
+				leftDriveMotor.Set(speedToSet); //0.8
+				rightDriveMotor.Set(speedToSet); //0.8
 			}
 			else
 			{
@@ -465,8 +466,11 @@ public:
 			if(driveGyro.GetAngle() >= -rAngle && fabs(error) > 2.0)
 			{
 				//turn right
-				leftDriveMotor.Set((error/140) - 0.2); //-0.8
-				rightDriveMotor.Set((error/140) - 0.2); //-0.8
+				speedToSet = (error/140) - 0.1;
+				if(fabs(speedToSet) > maxTurnSpeed)
+					speedToSet = maxTurnSpeed * (speedToSet < 0.0 ? -1.0 : 1.0);
+				leftDriveMotor.Set(speedToSet); //-0.8
+				rightDriveMotor.Set(speedToSet); //-0.8
 			}
 			else
 			{
@@ -662,7 +666,7 @@ public:
 
 	/*
 	 * Get both middle and close hopper of balls (RED)
-	 * I've assumed that positive angles will turn clockwise relative to the gear catcher being the front
+	 * I've assumed that negative angles will turn clockwise relative to the gear catcher being the front
 	 * I've assume positive drive motor speeds will drive the robot in reverse (relative to the gear catcher being the front)
 	 */
 	void score_RED_TwoHopper_Autonomous()
@@ -683,8 +687,9 @@ public:
 				break;
 			case 2:
 				//Turn intake side towards hopper
-				if(turnGyro(90.0))
+				if(turnGyro(-90.0))
 				{
+					Wait(0.5);
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
@@ -713,8 +718,9 @@ public:
 				break;
 			case 6:
 				//Turn gear catcher towards alliance station
-				if(turnGyro(-90.0))
+				if(turnGyro(90.0))
 				{
+					Wait(0.5);
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
@@ -729,8 +735,9 @@ public:
 				break;
 			case 8:
 				//Turn shooter to face boiler
-				if(turnGyro(60.0))
+				if(turnGyro(-60.0))
 				{
+					Wait(0.5);
 					resetDrive(USE_DRIVE_TIMER);
 
 					agitatorUp = false;
@@ -751,8 +758,9 @@ public:
 				break;
 			case 10:
 				//Turn towards close hopper
-				if(turnGyro(30.0))
+				if(turnGyro(-30.0))
 				{
+					Wait(0.5);
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
@@ -781,8 +789,9 @@ public:
 				break;
 			case 14:
 				//Turn shooter to face boiler
-				if(turnGyro(-30.0))
+				if(turnGyro(30.0))
 				{
+					Wait(0.5);
 					resetDrive(USE_DRIVE_TIMER);
 
 					agitatorUp = false;
@@ -809,12 +818,19 @@ public:
 
 	/*
 	 * Score gear on peg RED (Gear position 1 is closest to the boiler)
-	 * I've assumed that positive angles will turn clockwise relative to the gear catcher being the front
+	 * I've assumed that negative angles will turn clockwise relative to the gear catcher being the front
 	 * I've assume positive drive motor speeds will drive the robot in reverse (relative to the gear catcher being the front)
 	 */
-	void score_RED_GearPosition1_Autonomous()
+	void score_GearPosition1_Autonomous(bool isRED)
 	{
 		float angleErrorFromUltrasonics = 0.0;
+		float angleToTurn = -135.0; //For RED
+		float distanceToDrive = 1.0; //For RED
+
+		if(!isRED)
+		{
+			angleToTurn *= -1.0;
+		}
 
 		switch(autoState)
 		{
@@ -824,15 +840,16 @@ public:
 				break;
 			case 1:
 				//Drive the robot in reverse
-				if(autoDriveRobot(0.8, 0.8, 1.0, 0, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.8, 0.8, distanceToDrive, 0, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
 				break;
 			case 2:
-				if(turnGyro(45))
+				if(turnGyro(angleToTurn))
 				{
+					Wait(0.5);
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
@@ -923,8 +940,9 @@ public:
 
 		while (IsAutonomous() && IsEnabled())
 		{
-			if(autoSelected == autoNameGear1RED){
-				score_RED_GearPosition1_Autonomous();
+			if(autoSelected == autoNameGear1RED)
+			{
+				score_GearPosition1_Autonomous(true);
 			}
 			else if (autoSelected == autoNameGear2RED)
 			{
@@ -933,6 +951,10 @@ public:
 			else if (autoSelected == autoNameGear3RED)
 			{
 				//lowBarScoreAutonomous();
+			}
+			else if (autoSelected == autoNameGear1BLUE)
+			{
+				score_GearPosition1_Autonomous(false);
 			}
 			else if (autoSelected == autoNameTwoHopperRED)
 			{
