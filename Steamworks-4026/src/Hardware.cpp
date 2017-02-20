@@ -49,7 +49,7 @@ Hardware::Hardware()
     //shooterWheelBack.Set(0.0);
     
     shooterServo.Set(1.0);
-    driveReverse = true;
+    driveReverse = false;
     isGyroResetTelop = false;
     driveGyro.Reset();
 

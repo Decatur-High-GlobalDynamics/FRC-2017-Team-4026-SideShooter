@@ -679,7 +679,7 @@ public:
 				break;
 			case 1:
 				//Drive the robot in reverse to get to middle hopper
-				if(autoDriveRobot(0.8, 0.8, 2.0, 0, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.8, 0.8, 2.5, 0, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
@@ -825,7 +825,7 @@ public:
 	{
 		float angleErrorFromUltrasonics = 0.0;
 		float angleToTurn = -135.0; //For RED
-		float distanceToDrive = 1.0; //For RED
+		float distanceToDrive = 0.75; //For RED
 
 		if(!isRED)
 		{
@@ -840,7 +840,7 @@ public:
 				break;
 			case 1:
 				//Drive the robot in reverse
-				if(autoDriveRobot(0.8, 0.8, distanceToDrive, 0, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.5, 0.5, distanceToDrive, 0, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
@@ -865,7 +865,7 @@ public:
 			case 4:
 				//Align the robot face parallel to airship wall
 				angleErrorFromUltrasonics = performRobotFaceAlignment();
-				if(angleErrorFromUltrasonics > 20.0)	//Assume that if the angle returned is a large value there has been an error with the sensors
+				if(fabs(angleErrorFromUltrasonics) > 20.0)	//Assume that if the angle returned is a large value there has been an error with the sensors
 				{
 					autoState = -1;	//Abort
 				}

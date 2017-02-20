@@ -11,6 +11,7 @@
 #include "ShootFuelBehavior.hpp"
 #include "TankBehavior.hpp"
 #include "ScrollBehavior.hpp"
+#include "ClimbingBehavior.hpp"
 #include "Hardware.hpp"
 
 
@@ -138,6 +139,13 @@ public:
         firstGearNode->possibleNextBehaviors[BehaviorComplete] = firstGearNode;
         activeStateMachines.push_back(gearStateMachine);
 
+        StateMachine *climbingStateMachine = new StateMachine();
+
+        ClimbingBehavior *cb = new ClimbingBehavior();
+        cb->name = "Climbing";
+        climbingStateMachine->appendBehavior(cb);
+        activeStateMachines.push_back(climbingStateMachine);
+
 	    // Note when we started this process
 	    clock_gettime(CLOCK_REALTIME, &processStart);
 	};
@@ -146,9 +154,11 @@ public:
 
 		// Step through all the scheduled state machines, executing each
 		std::vector<StateMachine *>::iterator it = activeStateMachines.begin();
-	    while (it < activeStateMachines.end()) {
+	    while (it != activeStateMachines.end()) {
 	    	StateMachine *stateMachine = *it;
+	    	//fprintf(stderr,"Running %s\n", stateMachine->currentNode->currentBehavior->name.c_str());
 	        stateMachine->execute(hardware, millisSinceStart());
+	        it++;
 	    }
 	}
 
