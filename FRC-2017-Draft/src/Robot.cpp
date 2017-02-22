@@ -39,6 +39,7 @@ class Robot: public frc::SampleRobot {
 	CANTalon gearCatcherScrew { 3 };
 	Servo shooterServo { 4 };
 	Servo agitatorServo { 5 };
+	Talon agitatorMotor { 2 };
 
 	frc::Joystick driveLeftStick { 0 };
 	frc::Joystick driveRightStick { 1 };
@@ -48,6 +49,7 @@ class Robot: public frc::SampleRobot {
 	AnalogInput wallDistanceSensorR { 2 };
 	AnalogInput wallDistanceSensorL { 1 };
 	DigitalInput photoElectric {2};
+	DigitalInput photoElectricShooter {3};
 	DigitalInput gearCatcherLimitLeft { 1 };
 	DigitalInput gearCatcherLimitRight { 0 };
 
@@ -96,7 +98,7 @@ public:
 		//Configure Shooter Talons
 		shooterWheelFront.SetFeedbackDevice(CANTalon::FeedbackDevice::CtreMagEncoder_Relative);
 		shooterWheelFront.ConfigNominalOutputVoltage(+0.0f, -0.0f);
-		shooterWheelFront.ConfigPeakOutputVoltage(+12.0f, -12.0f);  //Modify this to allow for just forward or just backward spin
+		shooterWheelFront.ConfigPeakOutputVoltage(+0.0f, -12.0f);  //Modify this to allow for just forward or just backward spin
 		shooterWheelFront.SetTalonControlMode(CANTalon::TalonControlMode::kSpeedMode);
 		shooterWheelFront.SetSensorDirection(false);
 		shooterWheelFront.SetAllowableClosedLoopErr(0);
@@ -109,7 +111,7 @@ public:
 
 		shooterWheelBack.SetFeedbackDevice(CANTalon::FeedbackDevice::CtreMagEncoder_Relative);
 		shooterWheelBack.ConfigNominalOutputVoltage(+0.0f, -0.0f);
-		shooterWheelBack.ConfigPeakOutputVoltage(+12.0f, -12.0f); //Modify this to allow for just forward or just backward spin
+		shooterWheelBack.ConfigPeakOutputVoltage(+12.0f, -0.0f); //Modify this to allow for just forward or just backward spin
 		shooterWheelBack.SetTalonControlMode(CANTalon::TalonControlMode::kSpeedMode);
 		shooterWheelBack.SetSensorDirection(false);
 		shooterWheelBack.SetAllowableClosedLoopErr(0);
@@ -198,6 +200,22 @@ public:
 	}
 
 	/*
+	 * Determine whether we should keep driving straight in tele-op
+	 */
+	bool shouldIHelpDriverDriveStraight()
+	{
+		float right = driveRightStick.GetY();
+		float left = driveLeftStick.GetY();
+		float diff = fabs(right-left);
+		bool sameSign = ((right < 0.0 && left < 0.0) || (right > 0.0 && left > 0.0))  ? true : false;
+
+		if(sameSign && (diff < 0.2))
+			return true;
+
+		return false;
+	}
+
+	/*
 	 * All for human control of drive train
 	 */
 	void tankDrive()
@@ -205,10 +223,11 @@ public:
 		toggleDriveDirection();
 		//float right = smoothJoyStick(driveRightStick.GetY());
 		//float left = smoothJoyStick(driveLeftStick.GetY());
-		float right = driveRightStick.GetY();
-		float left = driveLeftStick.GetY();
+		double right = driveRightStick.GetY();
+		double left = driveLeftStick.GetY();
+		double avgStick = (right + left) / 2.0;
 
-		if(!driveRightStick.GetTrigger())
+		if(!driveRightStick.GetTrigger() && !shouldIHelpDriverDriveStraight())
 		{
 			if (driveReverse)
 			{
@@ -231,11 +250,11 @@ public:
 			}
 			if (driveReverse)
 			{
-				keepDriveStraight(driveRightStick.GetY(), driveRightStick.GetY(), 0);
+				keepDriveStraight(avgStick, avgStick, 0);
 			}
 			else
 			{
-				keepDriveStraight(-driveRightStick.GetY(), -driveRightStick.GetY(), 0);
+				keepDriveStraight(-avgStick, -avgStick, 0);
 			}
 		}
 	}
@@ -250,7 +269,7 @@ public:
 
 		shooterWheelFront.SetP(0.047);
 		shooterWheelFront.SetI(0.0);
-		shooterWheelFront.SetD(1.2);
+		shooterWheelFront.SetD(1.2); //1.2
 
 		shooterWheelBack.SetP(0.047);
 		shooterWheelBack.SetI(0.0);
@@ -283,6 +302,8 @@ public:
 
 		shooterWheelFront.Set(0.0);
 		shooterWheelBack.Set(0.0);
+
+		agitatorMotor.Set(0.0);
 	}
 
 	/*
@@ -295,16 +316,18 @@ public:
 		else
 			shooterServo.Set(SERVO_DOWN);
 
-		if(!agitatorUp && (agitatorTimer.Get() > 0.5))
+		if(!agitatorUp && (agitatorTimer.Get() > 1.0))
 		{
 			agitatorServo.Set(0.2);
+			agitatorMotor.Set(1.0);
 			agitatorTimer.Reset();
 			agitatorTimer.Start();
 			agitatorUp = true;
 		}
-		else if(agitatorTimer.Get() > 0.5)
+		else if(agitatorTimer.Get() > 2.0)
 		{
 			agitatorServo.Set(0.9);
+			agitatorMotor.Set(-1.0);
 			agitatorTimer.Reset();
 			agitatorTimer.Start();
 			agitatorUp = false;
@@ -448,7 +471,7 @@ public:
 			if(driveGyro.GetAngle() <= fabs(rAngle) && fabs(error) > 2.0)
 			{
 				//turn left
-				speedToSet = (error/140) + 0.1;
+				speedToSet = (error/270) + 0.15; //140 0.2
 				if(fabs(speedToSet) > maxTurnSpeed)
 					speedToSet = maxTurnSpeed * (speedToSet < 0.0 ? -1.0 : 1.0);
 				leftDriveMotor.Set(speedToSet); //0.8
@@ -457,7 +480,8 @@ public:
 			else
 			{
 				stopRobotDrive();
-				return true;
+				//if(WaitAsyncUntil(0.5,true))
+					return true;
 			}
 		}
 		else if(rAngle > driveGyro.GetAngle())
@@ -466,7 +490,7 @@ public:
 			if(driveGyro.GetAngle() >= -rAngle && fabs(error) > 2.0)
 			{
 				//turn right
-				speedToSet = (error/140) - 0.1;
+				speedToSet = (error/270) - 0.15;
 				if(fabs(speedToSet) > maxTurnSpeed)
 					speedToSet = maxTurnSpeed * (speedToSet < 0.0 ? -1.0 : 1.0);
 				leftDriveMotor.Set(speedToSet); //-0.8
@@ -475,7 +499,8 @@ public:
 			else
 			{
 				stopRobotDrive();
-				return true;
+				//if(WaitAsyncUntil(0.5,true))
+					return true;
 			}
 		}
 		else
@@ -579,6 +604,7 @@ public:
 		SmartDashboard::PutNumber("GearLimitLeft: ", gearCatcherLimitLeft.Get());
 		SmartDashboard::PutNumber("GearLimitRight: ", gearCatcherLimitRight.Get());
 		SmartDashboard::PutNumber("photoElectric: ", photoElectric.Get());
+		SmartDashboard::PutNumber("photoElectricShooter: ", photoElectricShooter.Get());
 
 		SmartDashboard::PutNumber("Avg Shooter Vel Error: ", avgShooterVelocityError);
 	}
@@ -616,8 +642,8 @@ public:
 				}
 				else
 				{
-					gearCatcherState++;
 					gearCatcherScrew.Set(0.0);
+					gearCatcherState++;
 				}
 				break;
 			case 1:
@@ -627,8 +653,13 @@ public:
 				}
 				else
 				{
-					gearCatcherState++;
 					gearCatcherScrew.Set(0.0);
+
+					if(!gearCatcherLimitLeft.Get())
+						gearCatcherState = 0;
+					else
+						return true;
+						//gearCatcherState++;
 				}
 				break;
 			case 2:
@@ -681,6 +712,7 @@ public:
 				//Drive the robot in reverse to get to middle hopper
 				if(autoDriveRobot(0.8, 0.8, 2.5, 0, USE_DRIVE_TIMER))
 				{
+					Wait(0.25);
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
@@ -696,7 +728,7 @@ public:
 				break;
 			case 3:
 				//Drive the robot reverse to trigger hopper
-				if(autoDriveRobot(0.5, 0.5, 0.5, 0, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.5, 0.5, 0.8, 0, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
@@ -710,7 +742,7 @@ public:
 				break;
 			case 5:
 				//Drive the robot forward away from hopper
-				if(autoDriveRobot(-0.5, -0.5, 0.5, 0, USE_DRIVE_TIMER))
+				if(autoDriveRobot(-0.5, -0.5, 0.6, 0, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
@@ -824,8 +856,9 @@ public:
 	void score_GearPosition1_Autonomous(bool isRED)
 	{
 		float angleErrorFromUltrasonics = 0.0;
-		float angleToTurn = -135.0; //For RED
-		float distanceToDrive = 0.75; //For RED
+		float angleToTurn = -120.0; //For RED -120
+		float angleForBoiler = 110.0; //90
+		float distanceToDrive = 1.35; //For RED
 
 		if(!isRED)
 		{
@@ -856,10 +889,11 @@ public:
 				break;
 			case 3:
 				//Drive the robot forward to get a bit closer to airship
-				if(autoDriveRobot(-0.5, -0.5, 0.5, 0, USE_DRIVE_TIMER))
+				if(autoDriveRobot(-0.3, -0.3, 1.3, 0, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
-					autoState++;
+					//autoState++;
+					autoState = 6;//6
 				}
 				break;
 			case 4:
@@ -889,14 +923,14 @@ public:
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
-				else if(WaitAsyncUntil(2.0, true))
+				/*else if(WaitAsyncUntil(5.0, true))
 				{
 					autoState = -1; //Abort due to timeout
-				}
+				}*/
 				break;
 			case 7:
 				//Drive the robot forward to get the gear on the peg
-				if(autoDriveRobot(-0.3, -0.3, 1.0, 0, USE_DRIVE_TIMER))
+				if(autoDriveRobot(-0.3, -0.3, 0.6, 0, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
@@ -910,8 +944,48 @@ public:
 				break;
 			case 9:
 				//Drive the robot reverse
-				if(autoDriveRobot(0.5, 0.5, 1.0, 0, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.5, 0.5, 0.6, 0, USE_DRIVE_TIMER))
 				{
+					resetDrive(USE_DRIVE_TIMER);
+					autoState++;
+				}
+				break;
+			case 10:
+				if(turnGyro(angleForBoiler))
+				{
+					Wait(0.25);
+
+					//agitatorUp = false;
+					//agitatorTimer.Reset();
+					//agitatorTimer.Start();
+
+					resetDrive(USE_DRIVE_TIMER);
+					autoState++;
+				}
+				break;
+			case 11:
+				if(turnGyro(-1.0 * angleForBoiler, 0.3))
+				{
+					Wait(0.25);
+					resetDrive(USE_DRIVE_TIMER);
+					autoState = -1;
+				}
+				if(!photoElectricShooter.Get())
+				{
+					stopRobotDrive();
+
+					agitatorUp = false;
+					agitatorTimer.Reset();
+					agitatorTimer.Start();
+
+					autoState++;
+				}
+				break;
+			case 12:
+				shootFuel();
+				if(WaitAsyncUntil(5.0, true))
+				{
+					stopShooter();
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
@@ -937,6 +1011,9 @@ public:
 		auto autoSelected = chooser.GetSelected();
 		// std::string autoSelected = frc::SmartDashboard::GetString("Auto Selector", autoNameDefault);
 		std::cout << "Auto selected: " << autoSelected << std::endl;
+
+		gearCatcherState = 0;
+		autoState = 0;
 
 		while (IsAutonomous() && IsEnabled())
 		{
@@ -975,6 +1052,7 @@ public:
 	 */
 	void OperatorControl() override {
 		//myRobot.SetSafetyEnabled(true);
+		driveGyro.Reset();
 		while (IsOperatorControl() && IsEnabled())
 		{
 			tankDrive();
