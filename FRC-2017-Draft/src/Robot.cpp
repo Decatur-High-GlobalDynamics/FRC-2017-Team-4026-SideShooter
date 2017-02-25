@@ -10,6 +10,10 @@
 #include <CANTalon.h>
 #include <CameraServer.h>
 #define PI 3.14159265
+#define GRAVITY_IN_S2 385.827
+#define SHOOTER_ANGLE_DEGREES 76
+#define SHOOTER_WHEEL_DIAMETER_INCH 2.375
+#define SHOOTER_PCT_EFFICIENCY 97
 #define USE_DRIVE_TIMER 1
 #define DRIVE_TICKSPERREV 1000
 #define SERVO_UP 0.2
@@ -46,6 +50,7 @@ class Robot: public frc::SampleRobot {
 	frc::Joystick manipulatorStick { 2 };
 
 	AnalogGyro driveGyro { 0 };
+	AnalogInput wallDistanceSensorS { 3 };
 	AnalogInput wallDistanceSensorR { 2 };
 	AnalogInput wallDistanceSensorL { 1 };
 	DigitalInput photoElectric {2};
@@ -57,13 +62,18 @@ class Robot: public frc::SampleRobot {
 	Timer agitatorTimer;
 	Timer genericTimer;
 
+	bool stoleDriveTrainControl;	//Set to true if an autonomous function is controlling the drive train during tele-op
 	bool driveReverse;
 	bool isGyroResetTelop;
 	bool agitatorUp;
 	bool genericTimerStarted;
 	int autoState;
 	int gearCatcherState;
+	int shootFuelState;
 	double avgShooterVelocityError;
+	//const double shootSpeedArray[3] = {1000.0, 3600.0, 4000.0};
+	//const double shootDistanceInchArray[3] = {36.0, 118.0, 160.0};
+
 
 	frc::SendableChooser<std::string> chooser;
 	const std::string autoNameDefault = "Default";
@@ -76,10 +86,12 @@ class Robot: public frc::SampleRobot {
 public:
 	Robot() {
 		//Note SmartDashboard is not initialized here, wait until RobotInit to make SmartDashboard calls
+		stoleDriveTrainControl = false;
 		driveReverse = false;
 		isGyroResetTelop = false;
 		autoState = 0;
 		gearCatcherState = 0;
+		shootFuelState = 0;
 		agitatorUp = false;
 		genericTimerStarted = false;
 		avgShooterVelocityError = 0.0;
@@ -263,9 +275,13 @@ public:
 	 * Spin shooter wheels up to speed with door closed.
 	 * Return true when wheels are at speed
 	 */
-
 	bool spinShooterWheels(double frontWheel, double backWheel)
 	{
+		//Ensure we do not tell the shooter to spin backwards
+		if(frontWheel < 0.0)
+			frontWheel = 0.0;
+		if(backWheel < 0.0)
+			backWheel = 0.0;
 
 		shooterWheelFront.SetP(0.047);
 		shooterWheelFront.SetI(0.0);
@@ -309,12 +325,26 @@ public:
 	/*
 	 * Perform task of shooting fuel
 	 */
-	void shootFuel()
+	void shootFuel(bool useDistanceSensor)
 	{
-		if(spinShooterWheels(3600.0, 3400.0))
-			shooterServo.Set(SERVO_UP);
+		if(useDistanceSensor)
+		{	double shootRPM = calculateShotSpeedBasedOnDistance();
+
+			if(shootRPM != 0.0) //0.0 indicated error
+			{
+				if(spinShooterWheels(shootRPM, shootRPM - 200.0))
+					shooterServo.Set(SERVO_UP);
+				else
+					shooterServo.Set(SERVO_DOWN);
+			}
+		}
 		else
-			shooterServo.Set(SERVO_DOWN);
+		{
+			if(spinShooterWheels(3600.0, 3400.0))
+				shooterServo.Set(SERVO_UP);
+			else
+				shooterServo.Set(SERVO_DOWN);
+		}
 
 		if(!agitatorUp && (agitatorTimer.Get() > 1.0))
 		{
@@ -339,6 +369,8 @@ public:
 	 */
 	void shootFuelControl()
 	{
+		double angleBoilerFoundDeg = 0.0;
+
 		if(manipulatorStick.GetY() > 0.1 || manipulatorStick.GetY() < -0.1)
 		{
 			if(spinShooterWheels(manipulatorStick.GetY() * 3600.0, manipulatorStick.GetY() * 3400.0))
@@ -348,12 +380,67 @@ public:
 		}
 		else if(manipulatorStick.GetRawButton(1))
 		{
-			shootFuel();
+			stoleDriveTrainControl = true;
+			switch(shootFuelState)
+			{
+				case 0:
+					resetDrive(USE_DRIVE_TIMER);
+					shootFuelState++;
+					break;
+
+				case 1:
+					//Search for boiler turning max 90 deg clockwise (assuming gear catcher is the front)
+					if(turnGyro(-90.0, 0.3))
+					{
+						Wait(0.25);
+						resetDrive(USE_DRIVE_TIMER);
+						shootFuelState = -1;
+					}
+					if(!photoElectricShooter.Get())
+					{
+						stopRobotDrive();
+
+						angleBoilerFoundDeg = driveGyro.GetAngle();
+
+						agitatorUp = false;
+						agitatorTimer.Reset();
+						agitatorTimer.Start();
+
+						shootFuelState++;
+					}
+					break;
+
+				case 2:
+					//Attempt to keep the robot pointing in the correct direction
+					if(!photoElectricShooter.Get() && turnGyro(angleBoilerFoundDeg, 0.3))
+					{
+						shootFuel(true); //Use the distance sensor to adjust shot speed
+					}
+					else
+					{
+						//Robot lost sight of the boiler with the photoelectric sensor so stop shooting
+						stopShooter();
+						//shootFuelState = -1;
+					}
+					break;
+
+				default:
+					stopRobotDrive();
+					stopShooter();
+					break;
+			}
+		}
+		else if(manipulatorStick.GetRawButton(2))
+		{
+			shootFuel(false);	//For manual emergency
 		}
 		else
 		{
 			//Stop shooting
 			stopShooter();
+
+			shootFuelState = 0;
+			stoleDriveTrainControl = false;
 
 			agitatorUp = false;
 			agitatorTimer.Reset();
@@ -549,6 +636,47 @@ public:
 	}
 
 	/*
+	 * Calculate the shooter speed based on ultrasonic measured distance
+	 */
+	double calculateShotSpeedBasedOnDistance()
+	{
+		double currentShooterDistanceInch = CalculateWallDistanceShooter(false) + 17.5;
+
+		//Minimum shot distance
+		if(currentShooterDistanceInch < 24.0)
+			return 0.0;
+
+		double shooterVelocity = 0.0;
+		double shooterCalculatedRPM = 0.0;
+		shooterVelocity = sqrt(((currentShooterDistanceInch * 2.0) * GRAVITY_IN_S2) / sin(2.0 * SHOOTER_ANGLE_DEGREES * PI / 180.0));
+		shooterCalculatedRPM = (shooterVelocity * 60.0)/ (SHOOTER_WHEEL_DIAMETER_INCH * PI) * (SHOOTER_PCT_EFFICIENCY / 100.0);
+
+		SmartDashboard::PutNumber("Calculated Shot Speed (RPM): ", shooterCalculatedRPM);
+
+		return shooterCalculatedRPM;
+	}
+
+	/*
+	 * Used to calculate the robot distance from the wall
+	 */
+	double CalculateWallDistanceShooter(bool averaged = true)
+	{
+		double rawVoltage;
+		static double wallDistance;
+
+		if(averaged)
+			rawVoltage = (double)(wallDistanceSensorS.GetAverageVoltage());
+		else
+			rawVoltage = (double)(wallDistanceSensorS.GetVoltage());
+
+		//MB1030
+		double VFiveMM = 0.009671875;
+		wallDistance = rawVoltage / VFiveMM;
+
+		return wallDistance;
+	}
+
+	/*
 	 * Used to calculate the robot distance from the wall
 	 */
 	double CalculateWallDistanceR(bool averaged = true)
@@ -567,7 +695,7 @@ public:
 
 		//MB1030
 		//double VFiveMM = 0.009671875;
-		//crateDistance = rawVoltage / VFiveMM;
+		//wallDistance = rawVoltage / VFiveMM;
 
 		return wallDistance;
 	}
@@ -780,7 +908,7 @@ public:
 				}
 				break;
 			case 9:
-				shootFuel();
+				shootFuel(false);
 				if(WaitAsyncUntil(4.0, true))
 				{
 					stopShooter();
@@ -834,7 +962,7 @@ public:
 				}
 				break;
 			case 15:
-				shootFuel();
+				shootFuel(false);
 				if(WaitAsyncUntil(5.0, true))
 				{
 					stopShooter();
@@ -982,7 +1110,7 @@ public:
 				}
 				break;
 			case 12:
-				shootFuel();
+				shootFuel(false);
 				if(WaitAsyncUntil(5.0, true))
 				{
 					stopShooter();
@@ -1055,13 +1183,15 @@ public:
 		driveGyro.Reset();
 		while (IsOperatorControl() && IsEnabled())
 		{
-			tankDrive();
+			if(!stoleDriveTrainControl)
+				tankDrive();
 			shootFuelControl();
 			controlGearCatcher();
 			controlBallIntake();
 			updateDashboard();
 
-			performRobotFaceAlignment(); //temp..to be used during auto
+			//performRobotFaceAlignment(); //temp..to be used during auto
+			calculateShotSpeedBasedOnDistance();
 			// wait for a motor update time
 			frc::Wait(0.005);
 		}
