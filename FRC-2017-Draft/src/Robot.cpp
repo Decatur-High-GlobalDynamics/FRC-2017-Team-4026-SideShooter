@@ -14,7 +14,6 @@
 #define SHOOTER_ANGLE_DEGREES 76
 #define SHOOTER_WHEEL_DIAMETER_INCH 2.375
 #define SHOOTER_PCT_EFFICIENCY 97
-#define USE_DRIVE_TIMER 1
 #define DRIVE_TICKSPERREV 64
 #define SERVO_UP 0.2
 #define SERVO_DOWN 1.0
@@ -75,13 +74,11 @@ class Robot: public frc::SampleRobot {
 	//const double shootSpeedArray[3] = {1000.0, 3600.0, 4000.0};
 	//const double shootDistanceInchArray[3] = {36.0, 118.0, 160.0};
 
-
 	frc::SendableChooser<std::string> chooser;
 	const std::string autoNameDefault = "Default";
-	const std::string autoNameGear1RED= "RED: Gear Location 1";
-	const std::string autoNameGear2RED = "RED: Gear Location 2";
-	const std::string autoNameGear3RED = "RED: Gear Location 3";
-	const std::string autoNameGear1BLUE= "BLUE: Gear Location 1";
+	const std::string autoNameGear1 = "Gear Location 1";
+	const std::string autoNameGear2 = "Gear Location 2";
+	const std::string autoNameGear3 = "Gear Location 3";
 	const std::string autoNameTwoHopperRED = "RED: Two Hopper";
 
 public:
@@ -101,10 +98,9 @@ public:
 
 	void RobotInit() {
 		chooser.AddDefault(autoNameDefault, autoNameDefault);
-		chooser.AddObject(autoNameGear1RED, autoNameGear1RED);
-		chooser.AddObject(autoNameGear2RED, autoNameGear2RED);
-		chooser.AddObject(autoNameGear3RED, autoNameGear3RED);
-		chooser.AddObject(autoNameGear1BLUE, autoNameGear1BLUE);
+		chooser.AddObject(autoNameGear1, autoNameGear1);
+		chooser.AddObject(autoNameGear2, autoNameGear2);
+		chooser.AddObject(autoNameGear3, autoNameGear3);
 		chooser.AddObject(autoNameTwoHopperRED, autoNameTwoHopperRED);
 		frc::SmartDashboard::PutData("Auto Modes", &chooser);
 
@@ -633,17 +629,20 @@ public:
 				err = fabs(targetDistanceInch) - driveDistInch;
 				percentPower = (err / fabs(targetDistanceInch));
 
-				velocityLeft *= percentPower;
-				velocityRight *= percentPower;
+				if(err <= 24.0)	//If within 24" start slowing down
+				{
+					velocityLeft *= percentPower;
+					velocityRight *= percentPower;
 
-				if(velocityLeft < 0.0 && velocityLeft > -0.2)
-					velocityLeft = -0.2;
-				else if(velocityLeft > 0.0 && velocityLeft < 0.2)
-					velocityLeft = 0.2;
-				if(velocityRight < 0.0 && velocityRight > -0.2)
-					velocityRight = -0.2;
-				else if(velocityRight > 0.0 && velocityRight < 0.2)
-					velocityRight = 0.2;
+					if(velocityLeft < 0.0 && velocityLeft > -0.2)
+						velocityLeft = -0.2;
+					else if(velocityLeft > 0.0 && velocityLeft < 0.2)
+						velocityLeft = 0.2;
+					if(velocityRight < 0.0 && velocityRight > -0.2)
+						velocityRight = -0.2;
+					else if(velocityRight > 0.0 && velocityRight < 0.2)
+						velocityRight = 0.2;
+				}
 
 				keepDriveStraight(velocityLeft, velocityRight, 0);
 			}
@@ -1026,7 +1025,7 @@ public:
 				break;
 			case 1:
 				//Drive the robot in reverse
-				if(autoDriveRobot(0.5, 0.5, 1.35, distanceToDrive, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.8, 0.8, 0, distanceToDrive, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
@@ -1042,8 +1041,12 @@ public:
 				}
 				break;
 			case 3:
+				//Home gear catcher
+				gearCatcherState = 0;
+				findGearCatcherLift();
+
 				//Drive the robot forward to get a bit closer to airship
-				if(autoDriveRobot(-0.3, -0.3, 1.3, 36, USE_DRIVE_TIMER))
+				if(autoDriveRobot(-0.5, -0.5, 1.3, 36, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					//autoState++;
@@ -1092,7 +1095,7 @@ public:
 				break;
 			case 8:
 				//Wait some time for the pilot to remove the gear.  Would be better to have a sensor for this.
-				Wait(3.0);
+				Wait(2.0);
 				resetDrive(USE_DRIVE_TIMER);
 				autoState++;
 				break;
@@ -1162,6 +1165,8 @@ public:
 	 * SendableChooser make sure to add them to the chooser code above as well.
 	 */
 	void Autonomous() {
+		DriverStation::Alliance allianceColor;
+		bool isAllianceRED = false;
 		auto autoSelected = chooser.GetSelected();
 		// std::string autoSelected = frc::SmartDashboard::GetString("Auto Selector", autoNameDefault);
 		std::cout << "Auto selected: " << autoSelected << std::endl;
@@ -1169,23 +1174,26 @@ public:
 		gearCatcherState = 0;
 		autoState = 0;
 
+		//Determine current alliance color
+		allianceColor = DriverStation::GetInstance().GetAlliance();
+		if(allianceColor == DriverStation::Alliance::kRed)
+		{
+			isAllianceRED = true;
+		}
+
 		while (IsAutonomous() && IsEnabled())
 		{
-			if(autoSelected == autoNameGear1RED)
+			if(autoSelected == autoNameGear1)
 			{
-				score_GearPosition1_Autonomous(true);
+				score_GearPosition1_Autonomous(isAllianceRED);
 			}
-			else if (autoSelected == autoNameGear2RED)
+			else if (autoSelected == autoNameGear2)
 			{
 				//moatRampartAutonomous();
 			}
-			else if (autoSelected == autoNameGear3RED)
+			else if (autoSelected == autoNameGear3)
 			{
-				//lowBarScoreAutonomous();
-			}
-			else if (autoSelected == autoNameGear1BLUE)
-			{
-				score_GearPosition1_Autonomous(false);
+				score_GearPosition1_Autonomous(!isAllianceRED);
 			}
 			else if (autoSelected == autoNameTwoHopperRED)
 			{
