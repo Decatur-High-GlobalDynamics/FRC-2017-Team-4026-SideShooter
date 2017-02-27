@@ -15,10 +15,10 @@
 #define SHOOTER_WHEEL_DIAMETER_INCH 2.375
 #define SHOOTER_PCT_EFFICIENCY 97
 #define USE_DRIVE_TIMER 1
-#define DRIVE_TICKSPERREV 1000
+#define DRIVE_TICKSPERREV 64
 #define SERVO_UP 0.2
 #define SERVO_DOWN 1.0
-#define USE_DRIVE_TIMER 1
+#define USE_DRIVE_TIMER 0
 
 /**
  * This is a demo program showing the use of the RobotDrive class.
@@ -57,6 +57,7 @@ class Robot: public frc::SampleRobot {
 	DigitalInput photoElectricShooter {3};
 	DigitalInput gearCatcherLimitLeft { 1 };
 	DigitalInput gearCatcherLimitRight { 0 };
+	Encoder rightDriveEncoder {8 , 9, false};
 
 	Timer autoDriveTimer;
 	Timer agitatorTimer;
@@ -414,7 +415,7 @@ public:
 					//Attempt to keep the robot pointing in the correct direction
 					if(!photoElectricShooter.Get() && turnGyro(angleBoilerFoundDeg, 0.3))
 					{
-						shootFuel(true); //Use the distance sensor to adjust shot speed
+						shootFuel(false); //Use the distance sensor to adjust shot speed set to true
 					}
 					else
 					{
@@ -523,8 +524,8 @@ public:
 		else
 		{
 			//leftDriveEncoder.Reset();
-			//rightDriveEncoder.Reset();
-			//resetGyroAngle();
+			rightDriveEncoder.Reset();
+			resetGyroAngle();
 		}
 	}
 
@@ -558,7 +559,7 @@ public:
 			if(driveGyro.GetAngle() <= fabs(rAngle) && fabs(error) > 2.0)
 			{
 				//turn left
-				speedToSet = (error/270) + 0.15; //140 0.2
+				speedToSet = (error/270) + 0.2; //140 0.2
 				if(fabs(speedToSet) > maxTurnSpeed)
 					speedToSet = maxTurnSpeed * (speedToSet < 0.0 ? -1.0 : 1.0);
 				leftDriveMotor.Set(speedToSet); //0.8
@@ -577,7 +578,7 @@ public:
 			if(driveGyro.GetAngle() >= -rAngle && fabs(error) > 2.0)
 			{
 				//turn right
-				speedToSet = (error/270) - 0.15;
+				speedToSet = (error/270) - 0.2;
 				if(fabs(speedToSet) > maxTurnSpeed)
 					speedToSet = maxTurnSpeed * (speedToSet < 0.0 ? -1.0 : 1.0);
 				leftDriveMotor.Set(speedToSet); //-0.8
@@ -603,8 +604,11 @@ public:
 	 * Used during autonomous to drive the robot fwd or back to a location
 	 * Prior to calling this function you must call resetDrive
 	 */
-	bool autoDriveRobot(float velocityLeft, float velocityRight, float timeSec, float distanceInch, bool isTimerBased)
+	bool autoDriveRobot(float velocityLeft, float velocityRight, float timeSec, float targetDistanceInch, bool isTimerBased)
 	{
+		double err = 0.0;
+		double driveDistInch = 0.0;
+		double percentPower = 0.0;
 		if(isTimerBased)
 		{
 			if(autoDriveTimer.Get() <= timeSec)
@@ -621,16 +625,33 @@ public:
 		}
 		else
 		{
-			/*if(fabs(convertDriveTicksToInches(rightDriveEncoder.GetRaw())) < fabs(distanceInch))
+			driveDistInch = fabs(convertDriveTicksToInches(rightDriveEncoder.Get()));
+			if(driveDistInch < fabs(targetDistanceInch))
 			{
-				leftDriveMotor.Set(-velocityLeft);
-				rightDriveMotor.Set(velocityRight);
+				//leftDriveMotor.Set(-velocityLeft);
+				//rightDriveMotor.Set(velocityRight);
+				err = fabs(targetDistanceInch) - driveDistInch;
+				percentPower = (err / fabs(targetDistanceInch));
+
+				velocityLeft *= percentPower;
+				velocityRight *= percentPower;
+
+				if(velocityLeft < 0.0 && velocityLeft > -0.2)
+					velocityLeft = -0.2;
+				else if(velocityLeft > 0.0 && velocityLeft < 0.2)
+					velocityLeft = 0.2;
+				if(velocityRight < 0.0 && velocityRight > -0.2)
+					velocityRight = -0.2;
+				else if(velocityRight > 0.0 && velocityRight < 0.2)
+					velocityRight = 0.2;
+
+				keepDriveStraight(velocityLeft, velocityRight, 0);
 			}
 			else
 			{
 				stopRobotDrive();
 				return true;
-			}*/
+			}
 		}
 		return false;
 	}
@@ -727,6 +748,7 @@ public:
 	{
 		SmartDashboard::PutNumber("Wall Distance Right: ", CalculateWallDistanceR(false));
 		SmartDashboard::PutNumber("Wall Distance Left: ", CalculateWallDistanceL(false));
+		SmartDashboard::PutNumber("Wall Distance Shooter: ", CalculateWallDistanceShooter(false));
 		SmartDashboard::PutNumber("Gyro Reading: ", driveGyro.GetAngle());
 
 		SmartDashboard::PutNumber("GearLimitLeft: ", gearCatcherLimitLeft.Get());
@@ -735,6 +757,9 @@ public:
 		SmartDashboard::PutNumber("photoElectricShooter: ", photoElectricShooter.Get());
 
 		SmartDashboard::PutNumber("Avg Shooter Vel Error: ", avgShooterVelocityError);
+
+		SmartDashboard::PutNumber("Drive Encoder Ticks: ", rightDriveEncoder.Get());
+		SmartDashboard::PutNumber("Drive Encoder Inch: ", convertDriveTicksToInches(rightDriveEncoder.Get()));
 	}
 
 	/*
@@ -986,7 +1011,7 @@ public:
 		float angleErrorFromUltrasonics = 0.0;
 		float angleToTurn = -120.0; //For RED -120
 		float angleForBoiler = 110.0; //90
-		float distanceToDrive = 1.35; //For RED
+		float distanceToDrive = 70.0; //For RED. should be 103
 
 		if(!isRED)
 		{
@@ -1001,10 +1026,11 @@ public:
 				break;
 			case 1:
 				//Drive the robot in reverse
-				if(autoDriveRobot(0.5, 0.5, distanceToDrive, 0, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.5, 0.5, 1.35, distanceToDrive, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
+					//autoState= -1;
 				}
 				break;
 			case 2:
@@ -1017,7 +1043,7 @@ public:
 				break;
 			case 3:
 				//Drive the robot forward to get a bit closer to airship
-				if(autoDriveRobot(-0.3, -0.3, 1.3, 0, USE_DRIVE_TIMER))
+				if(autoDriveRobot(-0.3, -0.3, 1.3, 36, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					//autoState++;
@@ -1058,7 +1084,7 @@ public:
 				break;
 			case 7:
 				//Drive the robot forward to get the gear on the peg
-				if(autoDriveRobot(-0.3, -0.3, 0.6, 0, USE_DRIVE_TIMER))
+				if(autoDriveRobot(-0.3, -0.3, 0.6, 14, true))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
@@ -1072,7 +1098,7 @@ public:
 				break;
 			case 9:
 				//Drive the robot reverse
-				if(autoDriveRobot(0.5, 0.5, 0.6, 0, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.5, 0.5, 0.6, 36, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
