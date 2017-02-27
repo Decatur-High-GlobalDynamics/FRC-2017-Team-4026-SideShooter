@@ -71,6 +71,7 @@ class Robot: public frc::SampleRobot {
 	int gearCatcherState;
 	int shootFuelState;
 	double avgShooterVelocityError;
+	double gyroKi; //Integrator term for gyro
 	//const double shootSpeedArray[3] = {1000.0, 3600.0, 4000.0};
 	//const double shootDistanceInchArray[3] = {36.0, 118.0, 160.0};
 
@@ -79,7 +80,7 @@ class Robot: public frc::SampleRobot {
 	const std::string autoNameGear1 = "Gear Location 1";
 	const std::string autoNameGear2 = "Gear Location 2";
 	const std::string autoNameGear3 = "Gear Location 3";
-	const std::string autoNameTwoHopperRED = "RED: Two Hopper";
+	const std::string autoNameTwoHopper = "Two Hopper";
 
 public:
 	Robot() {
@@ -93,6 +94,7 @@ public:
 		agitatorUp = false;
 		genericTimerStarted = false;
 		avgShooterVelocityError = 0.0;
+		gyroKi = 0.0;
 		//myRobot.SetExpiration(0.1);
 	}
 
@@ -101,7 +103,7 @@ public:
 		chooser.AddObject(autoNameGear1, autoNameGear1);
 		chooser.AddObject(autoNameGear2, autoNameGear2);
 		chooser.AddObject(autoNameGear3, autoNameGear3);
-		chooser.AddObject(autoNameTwoHopperRED, autoNameTwoHopperRED);
+		chooser.AddObject(autoNameTwoHopper, autoNameTwoHopper);
 		frc::SmartDashboard::PutData("Auto Modes", &chooser);
 
 		//Configure Shooter Talons
@@ -337,7 +339,7 @@ public:
 		}
 		else
 		{
-			if(spinShooterWheels(3600.0, 3400.0))
+			if(spinShooterWheels(3400.0, 3600.0)) //3600, 3400
 				shooterServo.Set(SERVO_UP);
 			else
 				shooterServo.Set(SERVO_DOWN);
@@ -551,11 +553,19 @@ public:
 		//Positive gyro angle means turning left
 		if(rAngle < driveGyro.GetAngle())
 		{
+			//Start accumulating error if the rate of turning is < 2 deg/sec
+			if(driveGyro.GetRate() < 2.0)
+			{
+				gyroKi += 0.001;
+				if(gyroKi > 0.2) //Cap the integral term
+					gyroKi = 0.2;
+			}
+
 			error = fabs(rAngle) - driveGyro.GetAngle();
 			if(driveGyro.GetAngle() <= fabs(rAngle) && fabs(error) > 2.0)
 			{
 				//turn left
-				speedToSet = (error/270) + 0.2; //140 0.2
+				speedToSet = (error/270) + 0.2 + gyroKi; //140 0.2
 				if(fabs(speedToSet) > maxTurnSpeed)
 					speedToSet = maxTurnSpeed * (speedToSet < 0.0 ? -1.0 : 1.0);
 				leftDriveMotor.Set(speedToSet); //0.8
@@ -563,6 +573,7 @@ public:
 			}
 			else
 			{
+				gyroKi = 0.0;
 				stopRobotDrive();
 				//if(WaitAsyncUntil(0.5,true))
 					return true;
@@ -570,11 +581,19 @@ public:
 		}
 		else if(rAngle > driveGyro.GetAngle())
 		{
+			//Start accumulating error if the rate of turning is < 2 deg/sec
+			if(driveGyro.GetRate() < 2.0)
+			{
+				gyroKi += 0.001;
+				if(gyroKi > 0.2) //Cap the integral term
+					gyroKi = 0.2;
+			}
+
 			error = -rAngle - driveGyro.GetAngle();
 			if(driveGyro.GetAngle() >= -rAngle && fabs(error) > 2.0)
 			{
 				//turn right
-				speedToSet = (error/270) - 0.2;
+				speedToSet = (error/270) - 0.2 - gyroKi;
 				if(fabs(speedToSet) > maxTurnSpeed)
 					speedToSet = maxTurnSpeed * (speedToSet < 0.0 ? -1.0 : 1.0);
 				leftDriveMotor.Set(speedToSet); //-0.8
@@ -582,6 +601,7 @@ public:
 			}
 			else
 			{
+				gyroKi = 0.0;
 				stopRobotDrive();
 				//if(WaitAsyncUntil(0.5,true))
 					return true;
@@ -589,6 +609,7 @@ public:
 		}
 		else
 		{
+			gyroKi = 0.0;
 			stopRobotDrive();
 			return true;
 		}
@@ -629,7 +650,7 @@ public:
 				err = fabs(targetDistanceInch) - driveDistInch;
 				percentPower = (err / fabs(targetDistanceInch));
 
-				if(err <= 24.0)	//If within 24" start slowing down
+				if(err <= 48.0)	//If within 24" start slowing down
 				{
 					velocityLeft *= percentPower;
 					velocityRight *= percentPower;
@@ -852,8 +873,14 @@ public:
 	 * I've assumed that negative angles will turn clockwise relative to the gear catcher being the front
 	 * I've assume positive drive motor speeds will drive the robot in reverse (relative to the gear catcher being the front)
 	 */
-	void score_RED_TwoHopper_Autonomous()
+	void score_RED_TwoHopper_Autonomous(bool isRED)
 	{
+		double angleMultiplier = 1.0;
+		if(!isRED)
+		{
+			angleMultiplier = -1.0;
+		}
+
 		switch(autoState)
 		{
 			case 0:
@@ -862,7 +889,7 @@ public:
 				break;
 			case 1:
 				//Drive the robot in reverse to get to middle hopper
-				if(autoDriveRobot(0.8, 0.8, 2.5, 0, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.8, 0.8, 0, 285, USE_DRIVE_TIMER))
 				{
 					Wait(0.25);
 					resetDrive(USE_DRIVE_TIMER);
@@ -871,7 +898,7 @@ public:
 				break;
 			case 2:
 				//Turn intake side towards hopper
-				if(turnGyro(-90.0))
+				if(turnGyro(-90.0 * angleMultiplier))
 				{
 					Wait(0.5);
 					resetDrive(USE_DRIVE_TIMER);
@@ -880,21 +907,23 @@ public:
 				break;
 			case 3:
 				//Drive the robot reverse to trigger hopper
-				if(autoDriveRobot(0.5, 0.5, 0.8, 0, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.5, 0.5, 1.5, 84, true))
 				{
-					resetDrive(USE_DRIVE_TIMER);
+					resetDrive(true);
 					autoState++;
 				}
 				break;
 			case 4:
 				//Wait some time for the hopper to empty into robot
-				Wait(1.0);
-				resetDrive(USE_DRIVE_TIMER);
-				autoState++;
+				if(WaitAsyncUntil(1.0, true))
+				{
+					resetDrive(USE_DRIVE_TIMER);
+					autoState++;
+				}
 				break;
 			case 5:
 				//Drive the robot forward away from hopper
-				if(autoDriveRobot(-0.5, -0.5, 0.6, 0, USE_DRIVE_TIMER))
+				if(autoDriveRobot(-0.5, -0.5, 0, 74, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
@@ -902,7 +931,7 @@ public:
 				break;
 			case 6:
 				//Turn gear catcher towards alliance station
-				if(turnGyro(90.0))
+				if(turnGyro(90.0 * angleMultiplier))
 				{
 					Wait(0.5);
 					resetDrive(USE_DRIVE_TIMER);
@@ -911,18 +940,22 @@ public:
 				break;
 			case 7:
 				//Drive the robot in forward to get to close hopper
-				if(autoDriveRobot(0.8, 0.8, 1.0, 0, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.8, 0.8, 0, 108, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
 				break;
 			case 8:
-				//Turn shooter to face boiler
-				if(turnGyro(-60.0))
+				if(turnGyro(-90.0, 0.3))
 				{
-					Wait(0.5);
+					Wait(0.25);
 					resetDrive(USE_DRIVE_TIMER);
+					autoState = -1;
+				}
+				if(!photoElectricShooter.Get())
+				{
+					stopRobotDrive();
 
 					agitatorUp = false;
 					agitatorTimer.Reset();
@@ -937,7 +970,8 @@ public:
 				{
 					stopShooter();
 					resetDrive(USE_DRIVE_TIMER);
-					autoState++;
+					//autoState++;
+					autoState = -1;
 				}
 				break;
 			case 10:
@@ -1025,7 +1059,7 @@ public:
 				break;
 			case 1:
 				//Drive the robot in reverse
-				if(autoDriveRobot(0.8, 0.8, 0, distanceToDrive, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.5, 0.5, 0, distanceToDrive, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
@@ -1033,7 +1067,7 @@ public:
 				}
 				break;
 			case 2:
-				if(turnGyro(angleToTurn))
+				if(turnGyro(angleToTurn, 0.35))
 				{
 					Wait(0.5);
 					resetDrive(USE_DRIVE_TIMER);
@@ -1046,7 +1080,7 @@ public:
 				findGearCatcherLift();
 
 				//Drive the robot forward to get a bit closer to airship
-				if(autoDriveRobot(-0.5, -0.5, 1.3, 36, USE_DRIVE_TIMER))
+				if(autoDriveRobot(-0.4, -0.4, 1.3, 30, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					//autoState++;
@@ -1077,7 +1111,7 @@ public:
 				//Search for the peg using the photoelectric sensor
 				if(findGearCatcherLift())
 				{
-					resetDrive(USE_DRIVE_TIMER);
+					resetDrive(true);
 					autoState++;
 				}
 				/*else if(WaitAsyncUntil(5.0, true))
@@ -1087,7 +1121,7 @@ public:
 				break;
 			case 7:
 				//Drive the robot forward to get the gear on the peg
-				if(autoDriveRobot(-0.3, -0.3, 0.6, 14, true))
+				if(autoDriveRobot(-0.3, -0.3, 0.5, 14, true))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
@@ -1095,9 +1129,11 @@ public:
 				break;
 			case 8:
 				//Wait some time for the pilot to remove the gear.  Would be better to have a sensor for this.
-				Wait(2.0);
-				resetDrive(USE_DRIVE_TIMER);
-				autoState++;
+				if(WaitAsyncUntil(2.0, true))
+				{
+					resetDrive(USE_DRIVE_TIMER);
+					autoState++;
+				}
 				break;
 			case 9:
 				//Drive the robot reverse
@@ -1195,9 +1231,9 @@ public:
 			{
 				score_GearPosition1_Autonomous(!isAllianceRED);
 			}
-			else if (autoSelected == autoNameTwoHopperRED)
+			else if (autoSelected == autoNameTwoHopper)
 			{
-				score_RED_TwoHopper_Autonomous();
+				score_RED_TwoHopper_Autonomous(isAllianceRED);
 			}
 			else
 			{
