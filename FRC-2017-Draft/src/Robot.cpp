@@ -18,6 +18,7 @@
 #define SERVO_UP 0.2
 #define SERVO_DOWN 1.0
 #define USE_DRIVE_TIMER 0
+#define MAX_BATTERY 12.0
 
 /**
  * This is a demo program showing the use of the RobotDrive class.
@@ -200,13 +201,13 @@ public:
 
 		if(targetAngle > (driveGyro.GetAngle() - 0.5) || targetAngle < (driveGyro.GetAngle() + 0.5))
 		{
-			leftDriveMotor.Set((-leftDriveVel) + correctionFactor);
-			rightDriveMotor.Set(rightDriveVel + correctionFactor);
+			leftDriveMotor.Set(((-leftDriveVel) + correctionFactor) * batteryCompensationPct());
+			rightDriveMotor.Set((rightDriveVel + correctionFactor) * batteryCompensationPct());
 		}
 		else
 		{
-			leftDriveMotor.Set(-leftDriveVel);
-			rightDriveMotor.Set(rightDriveVel);
+			leftDriveMotor.Set(-leftDriveVel * batteryCompensationPct());
+			rightDriveMotor.Set(rightDriveVel * batteryCompensationPct());
 		}
 	}
 
@@ -372,10 +373,12 @@ public:
 
 		if(manipulatorStick.GetY() > 0.1 || manipulatorStick.GetY() < -0.1)
 		{
+			/*
 			if(spinShooterWheels(manipulatorStick.GetY() * 3600.0, manipulatorStick.GetY() * 3400.0))
 				shooterServo.Set(SERVO_UP);
 			else
 				shooterServo.Set(SERVO_DOWN);
+			 */
 		}
 		else if(manipulatorStick.GetRawButton(1))
 		{
@@ -568,8 +571,8 @@ public:
 				speedToSet = (error/270) + 0.2 + gyroKi; //140 0.2
 				if(fabs(speedToSet) > maxTurnSpeed)
 					speedToSet = maxTurnSpeed * (speedToSet < 0.0 ? -1.0 : 1.0);
-				leftDriveMotor.Set(speedToSet); //0.8
-				rightDriveMotor.Set(speedToSet); //0.8
+				leftDriveMotor.Set(speedToSet * batteryCompensationPct()); //0.8
+				rightDriveMotor.Set(speedToSet * batteryCompensationPct()); //0.8
 			}
 			else
 			{
@@ -596,8 +599,8 @@ public:
 				speedToSet = (error/270) - 0.2 - gyroKi;
 				if(fabs(speedToSet) > maxTurnSpeed)
 					speedToSet = maxTurnSpeed * (speedToSet < 0.0 ? -1.0 : 1.0);
-				leftDriveMotor.Set(speedToSet); //-0.8
-				rightDriveMotor.Set(speedToSet); //-0.8
+				leftDriveMotor.Set(speedToSet * batteryCompensationPct()); //-0.8
+				rightDriveMotor.Set(speedToSet * batteryCompensationPct()); //-0.8
 			}
 			else
 			{
@@ -762,6 +765,17 @@ public:
 	}
 
 	/*
+	 * Calculate a battery compensation percentage to multiply pwm output by
+	 */
+	double batteryCompensationPct()
+	{
+		double batteryScaleFactor = 0.0;
+		batteryScaleFactor = MAX_BATTERY / DriverStation::GetInstance().GetBatteryVoltage();
+
+		return batteryScaleFactor;
+	}
+
+	/*
 	 * Update the SmartDashboard
 	 */
 	void updateDashboard()
@@ -780,6 +794,8 @@ public:
 
 		SmartDashboard::PutNumber("Drive Encoder Ticks: ", rightDriveEncoder.Get());
 		SmartDashboard::PutNumber("Drive Encoder Inch: ", convertDriveTicksToInches(rightDriveEncoder.Get()));
+
+		SmartDashboard::PutNumber("Battery Scaling Factor: ", batteryCompensationPct());
 	}
 
 	/*
@@ -873,12 +889,15 @@ public:
 	 * I've assumed that negative angles will turn clockwise relative to the gear catcher being the front
 	 * I've assume positive drive motor speeds will drive the robot in reverse (relative to the gear catcher being the front)
 	 */
-	void score_RED_TwoHopper_Autonomous(bool isRED)
+	void score_TwoHopper_Autonomous(bool isRED)
 	{
 		double angleMultiplier = 1.0;
+		float farHopperDistance = 285.0 + 52.0; //Red Alliance
 		if(!isRED)
 		{
+			//Blue
 			angleMultiplier = -1.0;
+			farHopperDistance = 285.0;
 		}
 
 		switch(autoState)
@@ -889,10 +908,10 @@ public:
 				break;
 			case 1:
 				//Drive the robot in reverse to get to middle hopper
-				if(autoDriveRobot(0.8, 0.8, 0, 285, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.8, 0.8, 0, farHopperDistance, USE_DRIVE_TIMER))
 				{
 					Wait(0.25);
-					resetDrive(USE_DRIVE_TIMER);
+					//resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
 				break;
@@ -900,7 +919,7 @@ public:
 				//Turn intake side towards hopper
 				if(turnGyro(-90.0 * angleMultiplier))
 				{
-					Wait(0.5);
+					Wait(0.25);
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
@@ -940,14 +959,14 @@ public:
 				break;
 			case 7:
 				//Drive the robot in forward to get to close hopper
-				if(autoDriveRobot(0.8, 0.8, 0, 108, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.8, 0.8, 0, farHopperDistance - 177.0, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
 				break;
 			case 8:
-				if(turnGyro(-90.0, 0.3))
+				if(turnGyro(-135.0, 0.3))
 				{
 					Wait(0.25);
 					resetDrive(USE_DRIVE_TIMER);
@@ -1039,7 +1058,7 @@ public:
 	 * I've assumed that negative angles will turn clockwise relative to the gear catcher being the front
 	 * I've assume positive drive motor speeds will drive the robot in reverse (relative to the gear catcher being the front)
 	 */
-	void score_GearPosition1_Autonomous(bool isRED)
+	void score_GearPosition1_Autonomous(bool isRED, bool shootFuelAfterGear = true)
 	{
 		float angleErrorFromUltrasonics = 0.0;
 		float angleToTurn = -120.0; //For RED -120
@@ -1069,7 +1088,7 @@ public:
 			case 2:
 				if(turnGyro(angleToTurn, 0.35))
 				{
-					Wait(0.5);
+					Wait(0.25);
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
@@ -1137,10 +1156,14 @@ public:
 				break;
 			case 9:
 				//Drive the robot reverse
-				if(autoDriveRobot(0.5, 0.5, 0.6, 36, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.4, 0.4, 0.6, 36, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
-					autoState++;
+
+					if(shootFuelAfterGear)
+						autoState++;
+					else
+						autoState = -1;
 				}
 				break;
 			case 10:
@@ -1190,6 +1213,78 @@ public:
 	}
 
 	/*
+	 * Score gear on peg RED (Gear position 2 is middle peg)
+	 * I've assumed that negative angles will turn clockwise relative to the gear catcher being the front
+	 * I've assume positive drive motor speeds will drive the robot in reverse (relative to the gear catcher being the front)
+	 */
+	void score_GearPosition2_Autonomous()
+	{
+		float distanceToDrive = 48.0;
+
+		switch(autoState)
+		{
+			case 0:
+				resetDrive(USE_DRIVE_TIMER);
+				autoState++;
+				break;
+			case 1:
+				//Home gear catcher
+				gearCatcherState = 0;
+				findGearCatcherLift();
+
+				//Drive the robot forward
+				if(autoDriveRobot(-0.5, -0.5, 0, distanceToDrive, USE_DRIVE_TIMER))
+				{
+					resetDrive(USE_DRIVE_TIMER);
+					autoState++;
+					//autoState= -1;
+				}
+				break;
+			case 2:
+				//Search for the peg using the photoelectric sensor
+				if(findGearCatcherLift())
+				{
+					resetDrive(true);
+					autoState++;
+				}
+				/*else if(WaitAsyncUntil(5.0, true))
+				{
+					autoState = -1; //Abort due to timeout
+				}*/
+				break;
+			case 3:
+				//Drive the robot forward to get the gear on the peg
+				if(autoDriveRobot(-0.3, -0.3, 0.5, 14, true))
+				{
+					resetDrive(USE_DRIVE_TIMER);
+					autoState++;
+				}
+				break;
+			case 4:
+				//Wait some time for the pilot to remove the gear.  Would be better to have a sensor for this.
+				if(WaitAsyncUntil(3.0, true))
+				{
+					resetDrive(USE_DRIVE_TIMER);
+					autoState++;
+				}
+				break;
+			case 5:
+				//Drive the robot reverse
+				if(autoDriveRobot(0.4, 0.4, 0.6, 36, USE_DRIVE_TIMER))
+				{
+					resetDrive(USE_DRIVE_TIMER);
+					autoState++;
+				}
+				break;
+
+			default:
+				stopRobotDrive();
+				break;
+		}
+	}
+
+
+	/*
 	 * This autonomous (along with the chooser code above) shows how to select
 	 * between different autonomous modes using the dashboard. The sendable
 	 * chooser code works with the Java SmartDashboard. If you prefer the
@@ -1225,15 +1320,15 @@ public:
 			}
 			else if (autoSelected == autoNameGear2)
 			{
-				//moatRampartAutonomous();
+				score_GearPosition2_Autonomous();
 			}
 			else if (autoSelected == autoNameGear3)
 			{
-				score_GearPosition1_Autonomous(!isAllianceRED);
+				score_GearPosition1_Autonomous(!isAllianceRED, false);
 			}
 			else if (autoSelected == autoNameTwoHopper)
 			{
-				score_RED_TwoHopper_Autonomous(isAllianceRED);
+				score_TwoHopper_Autonomous(isAllianceRED);
 			}
 			else
 			{
