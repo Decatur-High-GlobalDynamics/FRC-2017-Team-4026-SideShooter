@@ -18,7 +18,7 @@
 #define SERVO_UP 0.2
 #define SERVO_DOWN 1.0
 #define USE_DRIVE_TIMER 0
-#define MAX_BATTERY 12.0
+#define MAX_BATTERY 12.3
 
 /**
  * This is a demo program showing the use of the RobotDrive class.
@@ -64,6 +64,7 @@ class Robot: public frc::SampleRobot {
 	Timer genericTimer;
 
 	bool stoleDriveTrainControl;	//Set to true if an autonomous function is controlling the drive train during tele-op
+	bool stoleDriveTrainControl2; 	//For reverse 3 inch
 	bool driveReverse;
 	bool isGyroResetTelop;
 	bool agitatorUp;
@@ -71,6 +72,7 @@ class Robot: public frc::SampleRobot {
 	int autoState;
 	int gearCatcherState;
 	int shootFuelState;
+	int driveRevState;
 	double avgShooterVelocityError;
 	double gyroKi; //Integrator term for gyro
 	//const double shootSpeedArray[3] = {1000.0, 3600.0, 4000.0};
@@ -87,11 +89,13 @@ public:
 	Robot() {
 		//Note SmartDashboard is not initialized here, wait until RobotInit to make SmartDashboard calls
 		stoleDriveTrainControl = false;
+		stoleDriveTrainControl2 = false;
 		driveReverse = false;
 		isGyroResetTelop = false;
 		autoState = 0;
 		gearCatcherState = 0;
 		shootFuelState = 0;
+		driveRevState = 0;
 		agitatorUp = false;
 		genericTimerStarted = false;
 		avgShooterVelocityError = 0.0;
@@ -233,10 +237,18 @@ public:
 	void tankDrive()
 	{
 		toggleDriveDirection();
-		//float right = smoothJoyStick(driveRightStick.GetY());
-		//float left = smoothJoyStick(driveLeftStick.GetY());
+		//double right = smoothJoyStick(driveRightStick.GetY());
+		//double left = smoothJoyStick(driveLeftStick.GetY());
 		double right = driveRightStick.GetY();
 		double left = driveLeftStick.GetY();
+
+		//Cut speed in half
+		if(driveLeftStick.GetTrigger())
+		{
+			right /= 2.0;
+			left /= 2.0;
+		}
+
 		double avgStick = (right + left) / 2.0;
 
 		if(!driveRightStick.GetTrigger() && !shouldIHelpDriverDriveStraight())
@@ -340,7 +352,7 @@ public:
 		}
 		else
 		{
-			if(spinShooterWheels(3400.0, 3600.0)) //3600, 3400
+			if(spinShooterWheels(3400.0, 3500.0)) //3400, 3600
 				shooterServo.Set(SERVO_UP);
 			else
 				shooterServo.Set(SERVO_DOWN);
@@ -1053,6 +1065,44 @@ public:
 		}
 	}
 
+	void takeOverDrive()
+	{
+		if(driveLeftStick.GetRawButton(10) || driveLeftStick.GetRawButton(7))
+		{
+			stoleDriveTrainControl2 = true;
+			reverseNInches(3.0);
+		}
+		else
+		{
+			stoleDriveTrainControl2 = false;
+			driveRevState = 0;
+		}
+	}
+
+	void reverseNInches(double driveDistanceToReverse)
+	{
+		switch(driveRevState)
+				{
+					case 0:
+						resetDrive(USE_DRIVE_TIMER);
+						driveRevState++;
+						break;
+					case 1:
+						//Drive the robot in reverse
+						if(autoDriveRobot(0.25, 0.25, 0, driveDistanceToReverse, USE_DRIVE_TIMER))
+						{
+							resetDrive(USE_DRIVE_TIMER);
+							driveRevState++;
+						}
+						break;
+
+					default:
+						stoleDriveTrainControl2 = false;
+						stopRobotDrive();
+						break;
+				}
+	}
+
 	/*
 	 * Score gear on peg RED (Gear position 1 is closest to the boiler)
 	 * I've assumed that negative angles will turn clockwise relative to the gear catcher being the front
@@ -1061,13 +1111,16 @@ public:
 	void score_GearPosition1_Autonomous(bool isRED, bool shootFuelAfterGear = true)
 	{
 		float angleErrorFromUltrasonics = 0.0;
-		float angleToTurn = -120.0; //For RED -120
+		float angleToTurn = -113.0; //For RED -120
 		float angleForBoiler = 110.0; //90
-		float distanceToDrive = 70.0; //For RED. should be 103
+		float distanceToDrive = 72.0; //For RED. was 70
+		float distanceForGearPlacement = 30;
 
 		if(!isRED)
 		{
-			angleToTurn *= -1.0;
+			angleToTurn = 112.0;
+			distanceToDrive = 73.0;
+			distanceForGearPlacement = 30;
 		}
 
 		switch(autoState)
@@ -1099,7 +1152,7 @@ public:
 				findGearCatcherLift();
 
 				//Drive the robot forward to get a bit closer to airship
-				if(autoDriveRobot(-0.4, -0.4, 1.3, 30, USE_DRIVE_TIMER))
+				if(autoDriveRobot(-0.4, -0.4, 1.3, 20, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					//autoState++;
@@ -1130,7 +1183,7 @@ public:
 				//Search for the peg using the photoelectric sensor
 				if(findGearCatcherLift())
 				{
-					resetDrive(true);
+					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
 				/*else if(WaitAsyncUntil(5.0, true))
@@ -1140,7 +1193,7 @@ public:
 				break;
 			case 7:
 				//Drive the robot forward to get the gear on the peg
-				if(autoDriveRobot(-0.3, -0.3, 0.5, 14, true))
+				if(autoDriveRobot(-0.3, -0.3, 0.5, distanceForGearPlacement, USE_DRIVE_TIMER) || WaitAsyncUntil(1.5, true))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
@@ -1156,14 +1209,14 @@ public:
 				break;
 			case 9:
 				//Drive the robot reverse
-				if(autoDriveRobot(0.4, 0.4, 0.6, 36, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.4, 0.4, 0.6, 26, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 
 					if(shootFuelAfterGear)
 						autoState++;
 					else
-						autoState = -1;
+						autoState = 6;
 				}
 				break;
 			case 10:
@@ -1219,7 +1272,7 @@ public:
 	 */
 	void score_GearPosition2_Autonomous()
 	{
-		float distanceToDrive = 48.0;
+		float distanceToDrive = 44.0; //34
 
 		switch(autoState)
 		{
@@ -1244,7 +1297,7 @@ public:
 				//Search for the peg using the photoelectric sensor
 				if(findGearCatcherLift())
 				{
-					resetDrive(true);
+					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
 				/*else if(WaitAsyncUntil(5.0, true))
@@ -1254,7 +1307,7 @@ public:
 				break;
 			case 3:
 				//Drive the robot forward to get the gear on the peg
-				if(autoDriveRobot(-0.3, -0.3, 0.5, 14, true))
+				if(autoDriveRobot(-0.3, -0.3, 0.5, 36, USE_DRIVE_TIMER) || WaitAsyncUntil(1.5, true))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
@@ -1270,7 +1323,7 @@ public:
 				break;
 			case 5:
 				//Drive the robot reverse
-				if(autoDriveRobot(0.4, 0.4, 0.6, 36, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.4, 0.4, 0.6, 24, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
@@ -1311,12 +1364,13 @@ public:
 		{
 			isAllianceRED = true;
 		}
+		updateDashboard();
 
 		while (IsAutonomous() && IsEnabled())
 		{
 			if(autoSelected == autoNameGear1)
 			{
-				score_GearPosition1_Autonomous(isAllianceRED);
+				score_GearPosition1_Autonomous(isAllianceRED, false); //set second param to false to retry gear
 			}
 			else if (autoSelected == autoNameGear2)
 			{
@@ -1348,15 +1402,15 @@ public:
 		driveGyro.Reset();
 		while (IsOperatorControl() && IsEnabled())
 		{
-			if(!stoleDriveTrainControl)
+			if(!stoleDriveTrainControl && !stoleDriveTrainControl2)
 				tankDrive();
 			shootFuelControl();
 			controlGearCatcher();
 			controlBallIntake();
+			takeOverDrive();
 			updateDashboard();
 
-			//performRobotFaceAlignment(); //temp..to be used during auto
-			calculateShotSpeedBasedOnDistance();
+			//calculateShotSpeedBasedOnDistance();
 			// wait for a motor update time
 			frc::Wait(0.005);
 		}
