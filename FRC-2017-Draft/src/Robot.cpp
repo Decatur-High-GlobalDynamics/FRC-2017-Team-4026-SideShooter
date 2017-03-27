@@ -13,10 +13,10 @@
 #define GRAVITY_IN_S2 385.827
 #define SHOOTER_ANGLE_DEGREES 76
 #define SHOOTER_WHEEL_DIAMETER_INCH 2.375
-#define SHOOTER_PCT_EFFICIENCY 97
+#define SHOOTER_PCT_EFFICIENCY 99.5
 #define DRIVE_TICKSPERREV 64
 #define SERVO_UP 0.2
-#define SERVO_DOWN 1.0
+#define SERVO_DOWN 1.0 //1.0
 #define USE_DRIVE_TIMER 0
 #define MAX_BATTERY 12.3
 
@@ -203,6 +203,16 @@ public:
 		error = targetAngle - driveGyro.GetAngle();
 		correctionFactor = (error/75.0);
 
+		if(leftDriveVel > 0.9)
+			leftDriveVel = 0.9;
+		else if(leftDriveVel < -0.9)
+			leftDriveVel = -0.9;
+
+		if(rightDriveVel > 0.9)
+			rightDriveVel = 0.9;
+		else if(rightDriveVel < -0.9)
+			rightDriveVel = -0.9;
+
 		if(targetAngle > (driveGyro.GetAngle() - 0.5) || targetAngle < (driveGyro.GetAngle() + 0.5))
 		{
 			leftDriveMotor.Set(((-leftDriveVel) + correctionFactor) * batteryCompensationPct());
@@ -295,20 +305,20 @@ public:
 		if(backWheel < 0.0)
 			backWheel = 0.0;
 
-		shooterWheelFront.SetP(0.047);
-		shooterWheelFront.SetI(0.0);
-		shooterWheelFront.SetD(1.2); //1.2
+		shooterWheelFront.SetP(0.057);
+		shooterWheelFront.SetI(0.0001);
+		shooterWheelFront.SetD(1.3); //1.2
 
-		shooterWheelBack.SetP(0.047);
-		shooterWheelBack.SetI(0.0);
-		shooterWheelBack.SetD(1.2);
+		shooterWheelBack.SetP(0.057);
+		shooterWheelBack.SetI(0.0001);
+		shooterWheelBack.SetD(1.3);
 
 		shooterWheelFront.Set(-1.0 * frontWheel);
 		shooterWheelBack.Set(backWheel);
 
 		avgShooterVelocityError = (shooterWheelFront.GetClosedLoopError() + shooterWheelBack.GetClosedLoopError()) / 2.0;
 
-		if(avgShooterVelocityError < 500)
+		if(avgShooterVelocityError < 200 && (shooterWheelBack.GetSpeed() > (backWheel * 0.9))) //500
 			return true;
 
 		return false;
@@ -331,20 +341,20 @@ public:
 		shooterWheelFront.Set(0.0);
 		shooterWheelBack.Set(0.0);
 
-		agitatorMotor.Set(0.0);
+		agitatorMotor.Set(1.0);
 	}
 
 	/*
 	 * Perform task of shooting fuel
 	 */
-	void shootFuel(bool useDistanceSensor)
+	void shootFuel(bool useDistanceSensor, double frontVel, double backVel)
 	{
 		if(useDistanceSensor)
-		{	double shootRPM = calculateShotSpeedBasedOnDistance();
+		{	//double shootRPM = calculateShotSpeedBasedOnDistance();
 
-			if(shootRPM != 0.0) //0.0 indicated error
+			if(frontVel != 0.0) //0.0 indicated error
 			{
-				if(spinShooterWheels(shootRPM, shootRPM - 200.0))
+				if(spinShooterWheels(frontVel, backVel))
 					shooterServo.Set(SERVO_UP);
 				else
 					shooterServo.Set(SERVO_DOWN);
@@ -352,7 +362,7 @@ public:
 		}
 		else
 		{
-			if(spinShooterWheels(3400.0, 3500.0)) //3400, 3600
+			if(spinShooterWheels(frontVel, backVel)) //3400, 3500
 				shooterServo.Set(SERVO_UP);
 			else
 				shooterServo.Set(SERVO_DOWN);
@@ -361,7 +371,7 @@ public:
 		if(!agitatorUp && (agitatorTimer.Get() > 1.0))
 		{
 			agitatorServo.Set(0.2);
-			agitatorMotor.Set(1.0);
+			agitatorMotor.Set(-1.0);
 			agitatorTimer.Reset();
 			agitatorTimer.Start();
 			agitatorUp = true;
@@ -369,7 +379,7 @@ public:
 		else if(agitatorTimer.Get() > 2.0)
 		{
 			agitatorServo.Set(0.9);
-			agitatorMotor.Set(-1.0);
+			agitatorMotor.Set(1.0);
 			agitatorTimer.Reset();
 			agitatorTimer.Start();
 			agitatorUp = false;
@@ -382,6 +392,7 @@ public:
 	void shootFuelControl()
 	{
 		double angleBoilerFoundDeg = 0.0;
+		static double sVel = 0.0;
 
 		if(manipulatorStick.GetY() > 0.1 || manipulatorStick.GetY() < -0.1)
 		{
@@ -392,7 +403,7 @@ public:
 				shooterServo.Set(SERVO_DOWN);
 			 */
 		}
-		else if(manipulatorStick.GetRawButton(1))
+		else if(manipulatorStick.GetRawButton(1) || manipulatorStick.GetRawButton(2))
 		{
 			stoleDriveTrainControl = true;
 			switch(shootFuelState)
@@ -415,6 +426,7 @@ public:
 						stopRobotDrive();
 
 						angleBoilerFoundDeg = driveGyro.GetAngle();
+						sVel = calculateShotSpeedBasedOnDistance();
 
 						agitatorUp = false;
 						agitatorTimer.Reset();
@@ -428,7 +440,14 @@ public:
 					//Attempt to keep the robot pointing in the correct direction
 					if(!photoElectricShooter.Get() && turnGyro(angleBoilerFoundDeg, 0.3))
 					{
-						shootFuel(false); //Use the distance sensor to adjust shot speed set to true
+						if(manipulatorStick.GetRawButton(2))
+						{
+							shootFuel(false, 3200.0, 3200.0); //Use the distance sensor to adjust shot speed set to true
+						}
+						else
+						{
+							shootFuel(true, sVel, sVel);
+						}
 					}
 					else
 					{
@@ -446,7 +465,7 @@ public:
 		}
 		else if(manipulatorStick.GetRawButton(2))
 		{
-			shootFuel(false);	//For manual emergency
+			shootFuel(false, 3200.0, 3200.0);	//For manual emergency
 		}
 		else
 		{
@@ -792,7 +811,8 @@ public:
 	 */
 	void updateDashboard()
 	{
-		SmartDashboard::PutNumber("Wall Distance Right: ", CalculateWallDistanceR(false));
+		//SmartDashboard::PutNumber("Wall Distance Right: ", CalculateWallDistanceR(false));
+		SmartDashboard::PutNumber("Wall Distance Right: ", shooterWheelBack.GetSpeed());
 		SmartDashboard::PutNumber("Wall Distance Left: ", CalculateWallDistanceL(false));
 		SmartDashboard::PutNumber("Wall Distance Shooter: ", CalculateWallDistanceShooter(false));
 		SmartDashboard::PutNumber("Gyro Reading: ", driveGyro.GetAngle());
@@ -850,7 +870,7 @@ public:
 			case 1:
 				if (photoElectric.Get() && gearCatcherLimitLeft.Get())
 				{
-					gearCatcherScrew.Set(0.4);
+					gearCatcherScrew.Set(0.5); //0.4
 				}
 				else
 				{
@@ -903,13 +923,16 @@ public:
 	 */
 	void score_TwoHopper_Autonomous(bool isRED)
 	{
+		static double sVel = 0.0;
 		double angleMultiplier = 1.0;
-		float farHopperDistance = 285.0 + 52.0; //Red Alliance
+		double angleToSearchForBoiler = -60.0;
+		float closeHopperDistance = 84.0 + 34.0; //Red Alliance 84.0 52.0
 		if(!isRED)
 		{
 			//Blue
 			angleMultiplier = -1.0;
-			farHopperDistance = 285.0;
+			closeHopperDistance = 84.0;
+			angleToSearchForBoiler = -100.0;
 		}
 
 		switch(autoState)
@@ -920,10 +943,10 @@ public:
 				break;
 			case 1:
 				//Drive the robot in reverse to get to middle hopper
-				if(autoDriveRobot(0.8, 0.8, 0, farHopperDistance, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.5, 0.5, 0, closeHopperDistance, USE_DRIVE_TIMER))
 				{
 					Wait(0.25);
-					//resetDrive(USE_DRIVE_TIMER);
+					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
 				break;
@@ -931,16 +954,16 @@ public:
 				//Turn intake side towards hopper
 				if(turnGyro(-90.0 * angleMultiplier))
 				{
-					Wait(0.25);
+					//Wait(0.25);
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
 				break;
 			case 3:
 				//Drive the robot reverse to trigger hopper
-				if(autoDriveRobot(0.5, 0.5, 1.5, 84, true))
+				if(autoDriveRobot(0.6, 0.6, 1.5, 84, USE_DRIVE_TIMER) || WaitAsyncUntil(2.0, true))
 				{
-					resetDrive(true);
+					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
 				break;
@@ -954,31 +977,52 @@ public:
 				break;
 			case 5:
 				//Drive the robot forward away from hopper
-				if(autoDriveRobot(-0.5, -0.5, 0, 74, USE_DRIVE_TIMER))
+				if(autoDriveRobot(-0.5, -0.5, 0, 36, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
 				}
 				break;
 			case 6:
-				//Turn gear catcher towards alliance station
-				if(turnGyro(90.0 * angleMultiplier))
+				//Turn to start position for searching
+				if(!isRED)
 				{
-					Wait(0.5);
-					resetDrive(USE_DRIVE_TIMER);
-					autoState++;
+					//BLUE
+					if(turnGyro(-160.0))
+					{
+						Wait(0.25);
+						resetDrive(USE_DRIVE_TIMER);
+						autoState++;
+					}
+				}
+				else
+				{
+					//RED
+					if(turnGyro(70.0)) //60
+					{
+						Wait(0.25);
+						resetDrive(USE_DRIVE_TIMER);
+						autoState++;
+					}
 				}
 				break;
 			case 7:
-				//Drive the robot in forward to get to close hopper
-				if(autoDriveRobot(0.8, 0.8, 0, farHopperDistance - 177.0, USE_DRIVE_TIMER))
+				//Drive the robot forward away from hopper
+				if(isRED)
 				{
-					resetDrive(USE_DRIVE_TIMER);
+					if(autoDriveRobot(-0.5, -0.5, 0, 34, USE_DRIVE_TIMER))  //36
+					{
+						resetDrive(USE_DRIVE_TIMER);
+						autoState++;
+					}
+				}
+				else
+				{
 					autoState++;
 				}
 				break;
 			case 8:
-				if(turnGyro(-135.0, 0.3))
+				if(turnGyro(angleToSearchForBoiler, 0.3))
 				{
 					Wait(0.25);
 					resetDrive(USE_DRIVE_TIMER);
@@ -988,16 +1032,35 @@ public:
 				{
 					stopRobotDrive();
 
-					agitatorUp = false;
-					agitatorTimer.Reset();
-					agitatorTimer.Start();
+					//sVel = calculateShotSpeedBasedOnDistance();
+
+					//agitatorUp = false;
+					//agitatorTimer.Reset();
+					//agitatorTimer.Start();
 
 					autoState++;
 				}
 				break;
 			case 9:
-				shootFuel(false);
-				if(WaitAsyncUntil(4.0, true))
+				//Turn until not seeing boiler
+				if(turnGyro(4.0, 0.3))
+				{
+					Wait(0.25);
+					resetDrive(USE_DRIVE_TIMER);
+
+					stopRobotDrive();
+
+					sVel = calculateShotSpeedBasedOnDistance();
+
+					agitatorUp = false;
+					agitatorTimer.Reset();
+					agitatorTimer.Start();
+					autoState++;
+				}
+				break;
+			case 10:
+				shootFuel(true, sVel, sVel);
+				if(WaitAsyncUntil(7.0, true))
 				{
 					stopShooter();
 					resetDrive(USE_DRIVE_TIMER);
@@ -1005,60 +1068,7 @@ public:
 					autoState = -1;
 				}
 				break;
-			case 10:
-				//Turn towards close hopper
-				if(turnGyro(-30.0))
-				{
-					Wait(0.5);
-					resetDrive(USE_DRIVE_TIMER);
-					autoState++;
-				}
-				break;
-			case 11:
-				//Drive the robot reverse to trigger hopper
-				if(autoDriveRobot(0.5, 0.5, 0.5, 0, USE_DRIVE_TIMER))
-				{
-					resetDrive(USE_DRIVE_TIMER);
-					autoState++;
-				}
-				break;
-			case 12:
-				//Wait some time for the hopper to empty into robot
-				Wait(1.0);
-				resetDrive(USE_DRIVE_TIMER);
-				autoState++;
-				break;
-			case 13:
-				//Drive the robot forward away from hopper
-				if(autoDriveRobot(-0.5, -0.5, 0.5, 0, USE_DRIVE_TIMER))
-				{
-					resetDrive(USE_DRIVE_TIMER);
-					autoState++;
-				}
-				break;
-			case 14:
-				//Turn shooter to face boiler
-				if(turnGyro(30.0))
-				{
-					Wait(0.5);
-					resetDrive(USE_DRIVE_TIMER);
 
-					agitatorUp = false;
-					agitatorTimer.Reset();
-					agitatorTimer.Start();
-
-					autoState++;
-				}
-				break;
-			case 15:
-				shootFuel(false);
-				if(WaitAsyncUntil(5.0, true))
-				{
-					stopShooter();
-					resetDrive(USE_DRIVE_TIMER);
-					autoState++;
-				}
-				break;
 			default:
 				stopRobotDrive();
 				break;
@@ -1113,14 +1123,15 @@ public:
 		float angleErrorFromUltrasonics = 0.0;
 		float angleToTurn = -113.0; //For RED -120
 		float angleForBoiler = 110.0; //90
-		float distanceToDrive = 72.0; //For RED. was 70
-		float distanceForGearPlacement = 30;
+		float distanceToDrive = 76.0; //For RED. was 72
+		float distanceForGearPlacement = 36; //30
+		static double sVel = 0.0;
 
 		if(!isRED)
 		{
-			angleToTurn = 112.0;
-			distanceToDrive = 73.0;
-			distanceForGearPlacement = 30;
+			angleToTurn = 116.0; //112
+			distanceToDrive = 88.0; //73
+			distanceForGearPlacement = 36;
 		}
 
 		switch(autoState)
@@ -1193,7 +1204,7 @@ public:
 				break;
 			case 7:
 				//Drive the robot forward to get the gear on the peg
-				if(autoDriveRobot(-0.3, -0.3, 0.5, distanceForGearPlacement, USE_DRIVE_TIMER) || WaitAsyncUntil(1.5, true))
+				if(autoDriveRobot(-0.3, -0.3, 0.5, distanceForGearPlacement, USE_DRIVE_TIMER) || WaitAsyncUntil(2.0, true))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 					autoState++;
@@ -1242,6 +1253,7 @@ public:
 				if(!photoElectricShooter.Get())
 				{
 					stopRobotDrive();
+					sVel = calculateShotSpeedBasedOnDistance();
 
 					agitatorUp = false;
 					agitatorTimer.Reset();
@@ -1251,7 +1263,7 @@ public:
 				}
 				break;
 			case 12:
-				shootFuel(false);
+				shootFuel(true, sVel, sVel);
 				if(WaitAsyncUntil(5.0, true))
 				{
 					stopShooter();
@@ -1270,9 +1282,17 @@ public:
 	 * I've assumed that negative angles will turn clockwise relative to the gear catcher being the front
 	 * I've assume positive drive motor speeds will drive the robot in reverse (relative to the gear catcher being the front)
 	 */
-	void score_GearPosition2_Autonomous()
+	void score_GearPosition2_Autonomous(bool isRED, bool useUltra)
 	{
-		float distanceToDrive = 44.0; //34
+		float distanceToDrive = 54.0; //44
+		float angleForBoiler = -15.0; //RED -20
+		static double sVel = 0.0;
+
+		if(!isRED)
+		{
+			//BLUE
+			angleForBoiler = 15.0;
+		}
 
 		switch(autoState)
 		{
@@ -1329,6 +1349,53 @@ public:
 					autoState++;
 				}
 				break;
+			case 6:
+				if(isRED)
+				{
+					if(turnGyro(-180.0))
+					{
+						resetDrive(USE_DRIVE_TIMER);
+						autoState++;
+					}
+				}
+				else
+				{
+					autoState++;
+				}
+				break;
+			case 7:
+				if(turnGyro(angleForBoiler, 0.3))
+				{
+					Wait(0.25);
+					resetDrive(USE_DRIVE_TIMER);
+
+					stopRobotDrive();
+
+					sVel = calculateShotSpeedBasedOnDistance();
+
+					agitatorUp = false;
+					agitatorTimer.Reset();
+					agitatorTimer.Start();
+
+					autoState++;
+				}
+				break;
+			case 8:
+				if(useUltra)
+				{
+					shootFuel(true, sVel, sVel);
+				}
+				else
+				{
+					shootFuel(false, 4250.0, 4250.0); //3900
+				}
+				if(WaitAsyncUntil(5.0, true))
+				{
+					stopShooter();
+					resetDrive(USE_DRIVE_TIMER);
+					autoState++;
+				}
+				break;
 
 			default:
 				stopRobotDrive();
@@ -1370,11 +1437,11 @@ public:
 		{
 			if(autoSelected == autoNameGear1)
 			{
-				score_GearPosition1_Autonomous(isAllianceRED, false); //set second param to false to retry gear
+				score_GearPosition1_Autonomous(isAllianceRED, true); //set second param to false to retry gear
 			}
 			else if (autoSelected == autoNameGear2)
 			{
-				score_GearPosition2_Autonomous();
+				score_GearPosition2_Autonomous(isAllianceRED, true);
 			}
 			else if (autoSelected == autoNameGear3)
 			{
@@ -1387,6 +1454,8 @@ public:
 			else
 			{
 				//Default Auto goes here
+				//score_GearPosition2_Autonomous();
+				//score_GearPosition1_Autonomous(isAllianceRED, true);
 				doNothingAutonomous();
 			}
 			updateDashboard();
@@ -1410,7 +1479,7 @@ public:
 			takeOverDrive();
 			updateDashboard();
 
-			//calculateShotSpeedBasedOnDistance();
+			calculateShotSpeedBasedOnDistance();
 			// wait for a motor update time
 			frc::Wait(0.005);
 		}
