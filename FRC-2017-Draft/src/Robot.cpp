@@ -13,7 +13,7 @@
 #define GRAVITY_IN_S2 385.827
 #define SHOOTER_ANGLE_DEGREES 76
 #define SHOOTER_WHEEL_DIAMETER_INCH 2.375
-#define SHOOTER_PCT_EFFICIENCY 99.5
+#define SHOOTER_PCT_EFFICIENCY 99.0 //99.5
 #define DRIVE_TICKSPERREV 64
 #define SERVO_UP 0.2
 #define SERVO_DOWN 1.0 //1.0
@@ -44,10 +44,13 @@ class Robot: public frc::SampleRobot {
 	Servo shooterServo { 4 };
 	Servo agitatorServo { 5 };
 	Talon agitatorMotor { 2 };
+	DoubleSolenoid *gearCatcherValve;
+	Compressor *compressorPointer;
 
 	frc::Joystick driveLeftStick { 0 };
 	frc::Joystick driveRightStick { 1 };
 	frc::Joystick manipulatorStick { 2 };
+	frc::Joystick overrideControl {3};
 
 	AnalogGyro driveGyro { 0 };
 	AnalogInput wallDistanceSensorS { 3 };
@@ -69,6 +72,7 @@ class Robot: public frc::SampleRobot {
 	bool isGyroResetTelop;
 	bool agitatorUp;
 	bool genericTimerStarted;
+	bool easyMode;
 	int autoState;
 	int gearCatcherState;
 	int shootFuelState;
@@ -89,7 +93,9 @@ public:
 	Robot() {
 		//Note SmartDashboard is not initialized here, wait until RobotInit to make SmartDashboard calls
 		stoleDriveTrainControl = false;
+
 		stoleDriveTrainControl2 = false;
+		easyMode = false;
 		driveReverse = false;
 		isGyroResetTelop = false;
 		autoState = 0;
@@ -100,6 +106,10 @@ public:
 		genericTimerStarted = false;
 		avgShooterVelocityError = 0.0;
 		gyroKi = 0.0;
+		gearCatcherValve = new DoubleSolenoid(5,2);
+		compressorPointer = new Compressor();
+	    compressorPointer->SetClosedLoopControl(true);
+
 		//myRobot.SetExpiration(0.1);
 	}
 
@@ -143,10 +153,13 @@ public:
 		driveReverse = true;
 		driveGyro.Reset();
 
+		//In
+		gearCatcherValve->Set(DoubleSolenoid::kReverse);
+
 		//autoDriveTimer = new Timer();
 		//agitatorTimer = new Timer();
 
-		CameraServer::GetInstance()->StartAutomaticCapture();
+		//CameraServer::GetInstance()->StartAutomaticCapture();
 	}
 
 	/*
@@ -230,14 +243,14 @@ public:
 	 */
 	bool shouldIHelpDriverDriveStraight()
 	{
-		float right = driveRightStick.GetY();
+		/*float right = driveRightStick.GetY();
 		float left = driveLeftStick.GetY();
 		float diff = fabs(right-left);
 		bool sameSign = ((right < 0.0 && left < 0.0) || (right > 0.0 && left > 0.0))  ? true : false;
 
 		if(sameSign && (diff < 0.2))
 			return true;
-
+*/
 		return false;
 	}
 
@@ -249,11 +262,11 @@ public:
 		toggleDriveDirection();
 		//double right = smoothJoyStick(driveRightStick.GetY());
 		//double left = smoothJoyStick(driveLeftStick.GetY());
-		double right = driveRightStick.GetY();
-		double left = driveLeftStick.GetY();
+		double right = manipulatorStick.GetY();
+		double left = manipulatorStick.GetThrottle();
 
 		//Cut speed in half
-		if(driveLeftStick.GetTrigger())
+		if(manipulatorStick.GetRawButton(7) || easyMode)
 		{
 			right /= 2.0;
 			left /= 2.0;
@@ -261,7 +274,7 @@ public:
 
 		double avgStick = (right + left) / 2.0;
 
-		if(!driveRightStick.GetTrigger() && !shouldIHelpDriverDriveStraight())
+		if(!manipulatorStick.GetRawButton(8) && !shouldIHelpDriverDriveStraight())
 		{
 			if (driveReverse)
 			{
@@ -341,7 +354,7 @@ public:
 		shooterWheelFront.Set(0.0);
 		shooterWheelBack.Set(0.0);
 
-		agitatorMotor.Set(1.0);
+		agitatorMotor.Set(-1.0);
 	}
 
 	/*
@@ -391,96 +404,18 @@ public:
 	 */
 	void shootFuelControl()
 	{
-		double angleBoilerFoundDeg = 0.0;
-		static double sVel = 0.0;
-
-		if(manipulatorStick.GetY() > 0.1 || manipulatorStick.GetY() < -0.1)
-		{
-			/*
-			if(spinShooterWheels(manipulatorStick.GetY() * 3600.0, manipulatorStick.GetY() * 3400.0))
-				shooterServo.Set(SERVO_UP);
-			else
-				shooterServo.Set(SERVO_DOWN);
-			 */
+		if (manipulatorStick.GetRawButton(1)){
+			shootFuel(false, 4000, 4000);
+		} else if (manipulatorStick.GetRawButton(2)){
+			shootFuel(false, 3200, 3200);
 		}
-		else if(manipulatorStick.GetRawButton(1) || manipulatorStick.GetRawButton(2))
-		{
-			stoleDriveTrainControl = true;
-			switch(shootFuelState)
-			{
-				case 0:
-					resetDrive(USE_DRIVE_TIMER);
-					shootFuelState++;
-					break;
-
-				case 1:
-					//Search for boiler turning max 90 deg clockwise (assuming gear catcher is the front)
-					if(turnGyro(-90.0, 0.3))
-					{
-						Wait(0.25);
-						resetDrive(USE_DRIVE_TIMER);
-						shootFuelState = -1;
-					}
-					if(!photoElectricShooter.Get())
-					{
-						stopRobotDrive();
-
-						angleBoilerFoundDeg = driveGyro.GetAngle();
-						sVel = calculateShotSpeedBasedOnDistance();
-
-						agitatorUp = false;
-						agitatorTimer.Reset();
-						agitatorTimer.Start();
-
-						shootFuelState++;
-					}
-					break;
-
-				case 2:
-					//Attempt to keep the robot pointing in the correct direction
-					if(!photoElectricShooter.Get() && turnGyro(angleBoilerFoundDeg, 0.3))
-					{
-						if(manipulatorStick.GetRawButton(2))
-						{
-							shootFuel(false, 3200.0, 3200.0); //Use the distance sensor to adjust shot speed set to true
-						}
-						else
-						{
-							shootFuel(true, sVel, sVel);
-						}
-					}
-					else
-					{
-						//Robot lost sight of the boiler with the photoelectric sensor so stop shooting
-						stopShooter();
-						//shootFuelState = -1;
-					}
-					break;
-
-				default:
-					stopRobotDrive();
-					stopShooter();
-					break;
-			}
-		}
-		else if(manipulatorStick.GetRawButton(2))
-		{
-			shootFuel(false, 3200.0, 3200.0);	//For manual emergency
-		}
-		else
-		{
-			//Stop shooting
+		else {
 			stopShooter();
-
-			shootFuelState = 0;
-			stoleDriveTrainControl = false;
-
-			agitatorUp = false;
-			agitatorTimer.Reset();
-			agitatorTimer.Start();
 		}
-	}
 
+
+
+	}
 	/*
 	 * Simple manual gear catcher control using manipulator stick X axis
 	 */
@@ -511,17 +446,29 @@ public:
 		}
 	}
 
+	void gearPiston()
+	{
+		if (manipulatorStick.GetRawButton(4))
+		{
+			gearCatcherValve->Set(DoubleSolenoid::kForward);
+		}
+		else
+		{
+			gearCatcherValve->Set(DoubleSolenoid::kReverse);
+		}
+	}
+
 	/*
 	 * Simple manual intake control (doubles as robot climb control for the moment)
 	 */
 	void controlBallIntake()
 	{
-		if(manipulatorStick.GetRawButton(8))
+		if(manipulatorStick.GetRawButton(11))
 		{
 			ballIntakeRoller1.Set(-1.0);
 			ballIntakeRoller2.Set(-1.0);
 		}
-		else if(manipulatorStick.GetRawButton(7))
+		else if(manipulatorStick.GetRawButton(12))
 		{
 			ballIntakeRoller1.Set(-0.3);
 			ballIntakeRoller2.Set(-0.3);
@@ -718,8 +665,8 @@ public:
 		double currentShooterDistanceInch = CalculateWallDistanceShooter(false) + 17.5;
 
 		//Minimum shot distance
-		if(currentShooterDistanceInch < 24.0)
-			return 0.0;
+		if(currentShooterDistanceInch < 65.0)
+			return 3150.0;
 
 		double shooterVelocity = 0.0;
 		double shooterCalculatedRPM = 0.0;
@@ -1114,6 +1061,58 @@ public:
 	}
 
 	/*
+	 * Shoot fuel first then score side
+	 */
+	void scoreFuelThenGearPosition1_Auto(bool isRED)
+	{
+		//static double sVel = 0.0;
+
+		if(!isRED)
+		{
+
+		}
+
+		switch(autoState)
+		{
+			case 0:
+				stopRobotDrive();
+				//sVel = calculateShotSpeedBasedOnDistance();
+
+				agitatorUp = false;
+				agitatorTimer.Reset();
+				agitatorTimer.Start();
+
+				autoState++;
+				break;
+			case 1:
+				shootFuel(false, 3150.0, 3150.0);
+				if(WaitAsyncUntil(4.0, true))
+				{
+					stopShooter();
+					resetDrive(USE_DRIVE_TIMER);
+					autoState++;
+				}
+				break;
+			case 2:
+				//Align robot using alliance wall
+				leftDriveMotor.Set(-1.0 * -0.4);
+				rightDriveMotor.Set(-0.4);
+				if(WaitAsyncUntil(0.5,true))
+				{
+					stopRobotDrive();
+					autoState++;
+				}
+				break;
+			case 3:
+				score_GearPosition1_Autonomous(isRED, false);
+				break;
+
+			default:
+				break;
+		}
+	}
+
+	/*
 	 * Score gear on peg RED (Gear position 1 is closest to the boiler)
 	 * I've assumed that negative angles will turn clockwise relative to the gear catcher being the front
 	 * I've assume positive drive motor speeds will drive the robot in reverse (relative to the gear catcher being the front)
@@ -1123,14 +1122,14 @@ public:
 		float angleErrorFromUltrasonics = 0.0;
 		float angleToTurn = -113.0; //For RED -120
 		float angleForBoiler = 110.0; //90
-		float distanceToDrive = 76.0; //For RED. was 72
+		float distanceToDrive = 86.0; //For RED. was 76
 		float distanceForGearPlacement = 36; //30
 		static double sVel = 0.0;
 
 		if(!isRED)
 		{
 			angleToTurn = 116.0; //112
-			distanceToDrive = 88.0; //73
+			distanceToDrive = 80.0; //88
 			distanceForGearPlacement = 36;
 		}
 
@@ -1220,7 +1219,7 @@ public:
 				break;
 			case 9:
 				//Drive the robot reverse
-				if(autoDriveRobot(0.4, 0.4, 0.6, 26, USE_DRIVE_TIMER))
+				if(autoDriveRobot(0.4, 0.4, 0.6, 36, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
 
@@ -1338,7 +1337,8 @@ public:
 				if(WaitAsyncUntil(3.0, true))
 				{
 					resetDrive(USE_DRIVE_TIMER);
-					autoState++;
+					//autoState++;
+					autoState = -1;
 				}
 				break;
 			case 5:
@@ -1456,11 +1456,24 @@ public:
 				//Default Auto goes here
 				//score_GearPosition2_Autonomous();
 				//score_GearPosition1_Autonomous(isAllianceRED, true);
+				//scoreFuelThenGearPosition1_Auto(isAllianceRED);
 				doNothingAutonomous();
 			}
 			updateDashboard();
 			Wait(0.005);				// wait for a motor update time
 		}
+	}
+	bool killSwitch(){
+		if (overrideControl.GetRawButton(1)){
+			easyMode = true;
+		} else if(overrideControl.GetRawButton(2)){
+			easyMode = false;
+		}
+		if (easyMode == true && !overrideControl.GetRawButton(8)){
+			return false;
+		} else
+			return true;
+
 	}
 
 	/*
@@ -1471,19 +1484,29 @@ public:
 		driveGyro.Reset();
 		while (IsOperatorControl() && IsEnabled())
 		{
-			if(!stoleDriveTrainControl && !stoleDriveTrainControl2)
-				tankDrive();
-			shootFuelControl();
+			if(killSwitch()){
+				if(!stoleDriveTrainControl && !stoleDriveTrainControl2){
+					tankDrive();
+					shootFuelControl();
+				}
+			} else {
+				stopShooter();
+				stopRobotDrive();
+			}
+
 			controlGearCatcher();
 			controlBallIntake();
 			takeOverDrive();
+			gearPiston();
 			updateDashboard();
 
 			calculateShotSpeedBasedOnDistance();
 			// wait for a motor update time
 			frc::Wait(0.005);
+			}
+
 		}
-	}
+
 
 	/*
 	 * Runs during test mode
@@ -1492,5 +1515,6 @@ public:
 
 	}
 };
+
 
 START_ROBOT_CLASS(Robot)
