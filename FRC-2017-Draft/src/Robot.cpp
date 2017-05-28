@@ -45,6 +45,7 @@ class Robot: public frc::SampleRobot {
 	Servo agitatorServo { 5 };
 	Talon agitatorMotor { 2 };
 	DoubleSolenoid *gearCatcherValve;
+	DoubleSolenoid *transmissionValve;
 	Compressor *compressorPointer;
 
 	frc::Joystick driveLeftStick { 0 };
@@ -61,6 +62,7 @@ class Robot: public frc::SampleRobot {
 	DigitalInput gearCatcherLimitLeft { 1 };
 	DigitalInput gearCatcherLimitRight { 0 };
 	Encoder rightDriveEncoder {8 , 9, false};
+	PowerDistributionPanel pdp {0};
 
 	Timer autoDriveTimer;
 	Timer agitatorTimer;
@@ -107,6 +109,7 @@ public:
 		avgShooterVelocityError = 0.0;
 		gyroKi = 0.0;
 		gearCatcherValve = new DoubleSolenoid(5,2);
+		transmissionValve = new DoubleSolenoid(4,3);
 		compressorPointer = new Compressor();
 	    compressorPointer->SetClosedLoopControl(true);
 
@@ -155,9 +158,11 @@ public:
 
 		//In
 		gearCatcherValve->Set(DoubleSolenoid::kReverse);
+		transmissionValve->Set(DoubleSolenoid::kReverse);
 
 		//autoDriveTimer = new Timer();
 		//agitatorTimer = new Timer();
+		std::cout<<pdp.GetTemperature();
 
 		//CameraServer::GetInstance()->StartAutomaticCapture();
 	}
@@ -405,7 +410,7 @@ public:
 	void shootFuelControl()
 	{
 		if (manipulatorStick.GetRawButton(1)){
-			shootFuel(false, 4000, 4000);
+			shootFuel(false, 4200, 4200);
 		} else if (manipulatorStick.GetRawButton(2)){
 			shootFuel(false, 3200, 3200);
 		}
@@ -472,6 +477,12 @@ public:
 		{
 			ballIntakeRoller1.Set(-0.3);
 			ballIntakeRoller2.Set(-0.3);
+		}
+		else if (overrideControl.GetRawButton(10))
+		{
+			ballIntakeRoller1.Set(.25);
+			ballIntakeRoller2.Set(.25);
+
 		}
 		else
 		{
@@ -775,6 +786,8 @@ public:
 		SmartDashboard::PutNumber("Drive Encoder Inch: ", convertDriveTicksToInches(rightDriveEncoder.Get()));
 
 		SmartDashboard::PutNumber("Battery Scaling Factor: ", batteryCompensationPct());
+		SmartDashboard::PutNumber("PDP temp", pdp.GetTemperature());
+		SmartDashboard::PutNumber("PDP current", pdp.GetTotalCurrent());
 	}
 
 	/*
@@ -1161,7 +1174,7 @@ public:
 				gearCatcherState = 0;
 				findGearCatcherLift();
 
-				//Drive the robot forward to get a bit closer to airship
+				//Drive the robt forward to get a bit closer to airship
 				if(autoDriveRobot(-0.4, -0.4, 1.3, 20, USE_DRIVE_TIMER))
 				{
 					resetDrive(USE_DRIVE_TIMER);
@@ -1464,17 +1477,28 @@ public:
 		}
 	}
 	bool killSwitch(){
-		if (overrideControl.GetRawButton(1)){
+		if (overrideControl.GetRawButton(8)){
 			easyMode = true;
-		} else if(overrideControl.GetRawButton(2)){
+		} else if(overrideControl.GetRawButton(9)){
 			easyMode = false;
 		}
-		if (easyMode == true && !overrideControl.GetRawButton(8)){
+		if (easyMode == true && !overrideControl.GetRawButton(1)){
 			return false;
 		} else
 			return true;
 
 	}
+	void shiftGears(){
+		if (manipulatorStick.GetRawButton(9))
+		{
+			transmissionValve->Set(DoubleSolenoid::kForward);
+		}
+		else if (manipulatorStick.GetRawButton(10))
+		{
+			gearCatcherValve->Set(DoubleSolenoid::kReverse);
+		}
+	}
+
 
 	/*
 	 * Runs the motors with arcade steering.
@@ -1493,7 +1517,6 @@ public:
 				stopShooter();
 				stopRobotDrive();
 			}
-
 			controlGearCatcher();
 			controlBallIntake();
 			takeOverDrive();
@@ -1503,16 +1526,15 @@ public:
 			calculateShotSpeedBasedOnDistance();
 			// wait for a motor update time
 			frc::Wait(0.005);
-			}
+
 
 		}
+
 
 
 	/*
 	 * Runs during test mode
 	 */
-	void Test() override {
-
 	}
 };
 
