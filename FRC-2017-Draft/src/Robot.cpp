@@ -41,13 +41,16 @@ class Robot: public frc::SampleRobot {
 	CANTalon ballIntakeRoller1 { 2 };
 	CANTalon ballIntakeRoller2 { 4 };
 	CANTalon gearCatcherScrew { 3 };
+	DoubleSolenoid *hanger;
+	DoubleSolenoid *shifter;
+	Compressor *compressorPointer;
 	Servo shooterServo { 4 };
 	Servo agitatorServo { 5 };
 	Talon agitatorMotor { 2 };
 
-	frc::Joystick driveLeftStick { 0 };
-	frc::Joystick driveRightStick { 1 };
-	frc::Joystick manipulatorStick { 2 };
+	frc::Joystick mainDriverStick { 0 };
+	//frc::Joystick driveRightStick { 1 };
+	frc::Joystick manipulatorStick { 1 };
 
 	AnalogGyro driveGyro { 0 };
 	AnalogInput wallDistanceSensorS { 3 };
@@ -100,8 +103,14 @@ public:
 		genericTimerStarted = false;
 		avgShooterVelocityError = 0.0;
 		gyroKi = 0.0;
+		hanger= new DoubleSolenoid(5, 2);
+		hanger->Set(DoubleSolenoid::kReverse);
+		shifter= new DoubleSolenoid(4,3);
+		shifter->Set(DoubleSolenoid::kReverse);
 		//myRobot.SetExpiration(0.1);
+
 	}
+
 
 	void RobotInit() {
 		chooser.AddDefault(autoNameDefault, autoNameDefault);
@@ -137,7 +146,7 @@ public:
 		shooterWheelBack.SetI(0.0);
 		shooterWheelBack.SetD(0.0);
 		//shooterWheelBack.Set(0.0);
-
+		hanger->Set(DoubleSolenoid::kReverse);
 		shooterServo.Set(1.0);
 		agitatorServo.Set(0.9);
 		driveReverse = true;
@@ -182,7 +191,7 @@ public:
 	/*
 	 * Switch the front and back of the robot
 	 */
-	void toggleDriveDirection()
+	/*void toggleDriveDirection()
 	{
 		if(driveLeftStick.GetRawButton(3))
 		{
@@ -230,14 +239,6 @@ public:
 	 */
 	bool shouldIHelpDriverDriveStraight()
 	{
-		float right = driveRightStick.GetY();
-		float left = driveLeftStick.GetY();
-		float diff = fabs(right-left);
-		bool sameSign = ((right < 0.0 && left < 0.0) || (right > 0.0 && left > 0.0))  ? true : false;
-
-		if(sameSign && (diff < 0.2))
-			return true;
-
 		return false;
 	}
 
@@ -246,14 +247,14 @@ public:
 	 */
 	void tankDrive()
 	{
-		toggleDriveDirection();
+		//toggleDriveDirection();
 		//double right = smoothJoyStick(driveRightStick.GetY());
 		//double left = smoothJoyStick(driveLeftStick.GetY());
-		double right = driveRightStick.GetY();
-		double left = driveLeftStick.GetY();
+		double right = mainDriverStick.GetY();
+		double left = mainDriverStick.GetThrottle();
 
 		//Cut speed in half
-		if(driveLeftStick.GetTrigger())
+		if(mainDriverStick.GetRawButton(7))
 		{
 			right /= 2.0;
 			left /= 2.0;
@@ -261,7 +262,7 @@ public:
 
 		double avgStick = (right + left) / 2.0;
 
-		if(!driveRightStick.GetTrigger() && !shouldIHelpDriverDriveStraight())
+		if(!mainDriverStick.GetRawButton(8) && !shouldIHelpDriverDriveStraight())
 		{
 			if (driveReverse)
 			{
@@ -508,6 +509,13 @@ public:
 			}
 
 			gearCatcherState = 0;
+		}
+		if(manipulatorStick.GetRawButton(4)){
+			hanger->Set(DoubleSolenoid::kForward);
+		}
+		else
+		{
+			hanger->Set(DoubleSolenoid::kReverse);
 		}
 	}
 
@@ -1077,16 +1085,10 @@ public:
 
 	void takeOverDrive()
 	{
-		if(driveLeftStick.GetRawButton(10) || driveLeftStick.GetRawButton(7))
-		{
-			stoleDriveTrainControl2 = true;
-			reverseNInches(3.0);
-		}
-		else
-		{
+
 			stoleDriveTrainControl2 = false;
 			driveRevState = 0;
-		}
+
 	}
 
 	void reverseNInches(double driveDistanceToReverse)
